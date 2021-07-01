@@ -125,3 +125,9 @@ training_labels.csv
 *.zip
 *.7z
 *.rar
+
+# Pycharm Config File
+/.idea/
+
+# VSCode Config File
+/.vscode/

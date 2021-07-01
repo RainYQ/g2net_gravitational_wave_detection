@@ -4,5 +4,6 @@
 2. Clone https://github.com/RainYQ/g2net_gravitational_wave_detection.git
 3. Download datasets from [G2Net Gravitational Wave Detection | Kaggle](https://www.kaggle.com/c/g2net-gravitational-wave-detection/data)
 4. Unzip g2net-gravitational-wave-detection.zip
+5. **In Pycharm, Exclude train & test File Folder (!Warning)**
 ## STEP1: Transform to Spectrogram
 
