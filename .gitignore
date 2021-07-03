@@ -125,9 +125,18 @@ training_labels.csv
 *.zip
 *.7z
 *.rar
+tfrecords.001
+tfrecords.002
+tfrecords.003
 
 # Pycharm Config File
 /.idea/
 
 # VSCode Config File
 /.vscode/
+
+# Intermediate Results
+/test_melspec/
+/train_melspec/
+/train_tfrecords/
+/test_tfrecords/
