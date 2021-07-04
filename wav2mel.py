@@ -10,8 +10,6 @@ from tqdm.auto import tqdm
 import threading
 import math
 
-AUTOTUNE = tf.data.experimental.AUTOTUNE
-
 
 class CFG:
     # Mel-Spectrogram parameters
