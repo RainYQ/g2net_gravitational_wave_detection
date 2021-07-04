@@ -17,7 +17,7 @@ class CFG:
     batch_size = 16
     epoch = 50
     iteration_per_epoch = 1024
-    learning_rate = 1e-6
+    learning_rate = 1e-5
     k_fold = 5
     HEIGHT = 224
     WIDTH = 224
@@ -110,10 +110,6 @@ def _remove_idx(i, single_photo):
 
 
 def _create_annot(single_photo):
-    return single_photo['data'], tf.one_hot(single_photo['label'], 1)
-
-
-def _create_annot_val(single_photo):
     return single_photo['data'], tf.one_hot(single_photo['label'], 1)
 
 
