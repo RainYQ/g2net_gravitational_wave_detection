@@ -140,3 +140,4 @@ tfrecords.003
 /train_melspec/
 /train_tfrecords/
 /test_tfrecords/
+/model/
