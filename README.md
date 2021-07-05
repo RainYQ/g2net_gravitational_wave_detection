@@ -68,7 +68,7 @@
 ***
 ## STEP4: Train
 * On RTX2060, batch_size in train: 16
-* On RTX2080Ti, batch_size in train: 32/64(oof)
+* On RTX2080Ti, batch_size in train: 32/64(oom)
 * 5-Fold
 * Train Dataset
   * 448000 images
@@ -101,7 +101,7 @@
   ```
 ## STEP5: Predict
 * Single Fold: LB 0.826
-* On RTX2060, batch_size in predict: 64/128(oof)
+* On RTX2060, batch_size in predict: 64/128(oom)
 * On RTX2060, 9.5 min / fold
 
 ## STEP6: TODO
