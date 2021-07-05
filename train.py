@@ -26,6 +26,8 @@ class CFG:
     RAW_HEIGHT = 27
     RAW_WIDTH = 128
     SEED = 2022
+    TRAIN_DATA_SIZE = 560000
+    TEST_DATA_SIZE = 226000
 
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -72,17 +74,17 @@ def _preprocess_image_function(single_photo):
     image = (image - tf.reduce_min(image)) / (
             tf.reduce_max(image) - tf.reduce_min(image))
     image = tf.image.grayscale_to_rgb(image)
-    # image = tf.image.random_jpeg_quality(image, 80, 100)
+    image = tf.image.random_jpeg_quality(image, 80, 100)
     # 高斯噪声的标准差为 0.3
-    # gau = tf.keras.layers.GaussianNoise(0.3)
-    # # 以 50％ 的概率为图像添加高斯噪声
-    # image = tf.cond(tf.random.uniform([]) < 0.5, lambda: gau(image), lambda: image)
-    # image = tf.image.random_contrast(image, lower=0.7, upper=1.3)
-    # image = tf.cond(tf.random.uniform([]) < 0.5,
-    #                 lambda: tf.image.random_saturation(image, lower=0.7, upper=1.3),
-    #                 lambda: tf.image.random_hue(image, max_delta=0.3))
-    # # brightness随机调整
-    # image = tf.image.random_brightness(image, 0.3)
+    gau = tf.keras.layers.GaussianNoise(0.3)
+    # 以 50％ 的概率为图像添加高斯噪声
+    image = tf.cond(tf.random.uniform([]) < 0.5, lambda: gau(image), lambda: image)
+    image = tf.image.random_contrast(image, lower=0.7, upper=1.3)
+    image = tf.cond(tf.random.uniform([]) < 0.5,
+                    lambda: tf.image.random_saturation(image, lower=0.7, upper=1.3),
+                    lambda: tf.image.random_hue(image, max_delta=0.3))
+    # brightness随机调整
+    image = tf.image.random_brightness(image, 0.3)
     single_photo['data'] = image
     return single_photo['data'], tf.cast(single_photo['label'], tf.float32)
 
@@ -124,7 +126,7 @@ for i, sample in tqdm(preprocess_dataset):
 table = pd.DataFrame({'indices': indices, 'id': id, 'label': label})
 skf = StratifiedKFold(n_splits=5, random_state=CFG.SEED, shuffle=True)
 X = np.array(table.index)
-Y = np.array(list(table.label.values), dtype=np.uint8).reshape(560000)
+Y = np.array(list(table.label.values), dtype=np.uint8).reshape(CFG.TRAIN_DATA_SIZE)
 splits = list(skf.split(X, Y))
 # with open("splits.data", 'wb') as file:
 #     pickle.dump(splits, file)
