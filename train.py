@@ -1,3 +1,4 @@
+import pickle
 import random
 import os
 import math
@@ -11,13 +12,14 @@ import efficientnet.tfkeras as efn
 from sklearn.model_selection import StratifiedKFold
 from tensorflow.keras import backend as K
 from GroupNormalization import GroupNormalization
+import tensorflow_addons as tfa
 
 
 class CFG:
     batch_size = 16
     epoch = 50
     iteration_per_epoch = 1024
-    learning_rate = 1e-5
+    learning_rate = 1e-4
     k_fold = 5
     HEIGHT = 224
     WIDTH = 224
@@ -26,9 +28,9 @@ class CFG:
     SEED = 2022
 
 
-# gpus = tf.config.experimental.list_physical_devices('GPU')
-# for gpu in gpus:
-#     tf.config.experimental.set_memory_growth(gpu, True)
+gpus = tf.config.experimental.list_physical_devices('GPU')
+for gpu in gpus:
+    tf.config.experimental.set_memory_growth(gpu, True)
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 TRAIN_DATA_ROOT = "./train_tfrecords"
@@ -62,17 +64,17 @@ def _parse_image_function(single_photo):
 
 
 def _preprocess_image_function(single_photo):
-    image = tf.io.decode_raw(sample['data'], tf.float32)
+    image = tf.io.decode_raw(single_photo['data'], tf.float32)
     image = tf.reshape(image, [CFG.RAW_HEIGHT, CFG.RAW_WIDTH])
     image = tf.expand_dims(image, axis=-1)
     image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
     image = tf.image.per_image_standardization(image)
     image = (image - tf.reduce_min(image)) / (
-            tf.reduce_max(image) - tf.reduce_min(image)) * 255.0
+            tf.reduce_max(image) - tf.reduce_min(image))
     image = tf.image.grayscale_to_rgb(image)
     # image = tf.image.random_jpeg_quality(image, 80, 100)
     # 高斯噪声的标准差为 0.3
-    gau = tf.keras.layers.GaussianNoise(0.3)
+    # gau = tf.keras.layers.GaussianNoise(0.3)
     # # 以 50％ 的概率为图像添加高斯噪声
     # image = tf.cond(tf.random.uniform([]) < 0.5, lambda: gau(image), lambda: image)
     # image = tf.image.random_contrast(image, lower=0.7, upper=1.3)
@@ -82,20 +84,20 @@ def _preprocess_image_function(single_photo):
     # # brightness随机调整
     # image = tf.image.random_brightness(image, 0.3)
     single_photo['data'] = image
-    return single_photo
+    return single_photo['data'], tf.cast(single_photo['label'], tf.float32)
 
 
 def _preprocess_image_val_function(single_photo):
-    image = tf.io.decode_raw(sample['data'], tf.float32)
+    image = tf.io.decode_raw(single_photo['data'], tf.float32)
     image = tf.reshape(image, [CFG.RAW_HEIGHT, CFG.RAW_WIDTH])
     image = tf.expand_dims(image, axis=-1)
     image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
     image = tf.image.per_image_standardization(image)
     image = (image - tf.reduce_min(image)) / (
-            tf.reduce_max(image) - tf.reduce_min(image)) * 255.0
+            tf.reduce_max(image) - tf.reduce_min(image))
     image = tf.image.grayscale_to_rgb(image)
     single_photo['data'] = image
-    return single_photo
+    return single_photo['data'], tf.cast(single_photo['label'], tf.float32)
 
 
 def create_idx_filter(indice):
@@ -107,10 +109,6 @@ def create_idx_filter(indice):
 
 def _remove_idx(i, single_photo):
     return single_photo
-
-
-def _create_annot(single_photo):
-    return single_photo['data'], tf.one_hot(single_photo['label'], 1)
 
 
 indices = []
@@ -128,21 +126,28 @@ skf = StratifiedKFold(n_splits=5, random_state=CFG.SEED, shuffle=True)
 X = np.array(table.index)
 Y = np.array(list(table.label.values), dtype=np.uint8).reshape(560000)
 splits = list(skf.split(X, Y))
+# with open("splits.data", 'wb') as file:
+#     pickle.dump(splits, file)
+# with open("splits.data", 'rb') as file:
+#     splits = pickle.load(file)
 print("DataSet Split Successful.")
-print("origin: ", np.sum(np.array(list(table["label"].values), dtype=np.uint8), axis=0))
-for j in range(5):
-    print("Train Fold", j, ":", np.sum(np.array(list(table["label"][splits[j][0]].values), dtype=np.uint8), axis=0))
-    print("Val Fold", j, ":", np.sum(np.array(list(table["label"][splits[j][1]].values), dtype=np.uint8), axis=0))
-for j in range(5):
-    with open("./k-fold_" + str(j) + ".txt", 'w') as writer:
-        writer.write("Train:\n")
-        indic_str = "\n".join([str(l) for l in list(splits[j][0])])
-        writer.write(indic_str)
-        writer.write("\n")
-        writer.write("Val:\n")
-        indic_str = "\n".join([str(l) for l in list(splits[j][1])])
-        writer.write(indic_str)
-    writer.close()
+# print("origin: ", np.sum(np.array(list(table["label"].values), dtype=np.uint8), axis=0))
+# for j in range(5):
+#     print("Train Fold", j, ":", np.sum(np.array(list(table["label"][splits[j][0]].values), dtype=np.uint8), axis=0))
+#     print("Val Fold", j, ":", np.sum(np.array(list(table["label"][splits[j][1]].values), dtype=np.uint8), axis=0))
+# for j in range(5):
+#     with open("./k-fold_" + str(j) + ".txt", 'w') as writer:
+#         writer.write("Train:\n")
+#         indic_str = "\n".join([str(l) for l in list(splits[j][0])])
+#         writer.write(indic_str)
+#         writer.write("\n")
+#         writer.write("Val:\n")
+#         indic_str = "\n".join([str(l) for l in list(splits[j][1])])
+#         writer.write(indic_str)
+#     writer.close()
+
+opt = tf.data.Options()
+opt.experimental_deterministic = False
 
 
 def create_train_dataset(batchsize, train_idx):
@@ -154,9 +159,9 @@ def create_train_dataset(batchsize, train_idx):
                .cache()
                # .shuffle(len(train_idx))
                .shuffle(10240)
+               .with_options(opt)
                .repeat()
                .map(_preprocess_image_function, num_parallel_calls=AUTOTUNE)
-               .map(_create_annot, num_parallel_calls=AUTOTUNE)
                .batch(batchsize, num_parallel_calls=AUTOTUNE)
                .prefetch(AUTOTUNE))
     return dataset
@@ -169,7 +174,6 @@ def create_val_dataset(batchsize, val_idx):
                   .map(_remove_idx))
     dataset = (parsed_val
                .map(_preprocess_image_val_function, num_parallel_calls=AUTOTUNE)
-               .map(_create_annot, num_parallel_calls=AUTOTUNE)
                .batch(batchsize, num_parallel_calls=AUTOTUNE)
                .cache())
     return dataset
@@ -233,9 +237,11 @@ def create_model():
         GroupNormalization(group=32),
         tf.keras.layers.Dropout(0.5),
         tf.keras.layers.Dense(1, kernel_initializer=tf.keras.initializers.he_normal(), activation='sigmoid')])
-    optimizer = tf.keras.optimizers.Adam(CFG.learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0001)
+    # optimizer = tf.keras.optimizers.Adam(CFG.learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=1e-6)
+    optimizer = tfa.optimizers.RectifiedAdam(lr=CFG.learning_rate, total_steps=CFG.epoch * CFG.iteration_per_epoch,
+                                             warmup_proportion=0.3, min_lr=1e-6)
     model.compile(optimizer=optimizer,
-                  loss=tf.keras.losses.BinaryCrossentropy(),
+                  loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
                   metrics=['accuracy', tf.keras.metrics.AUC(name='auc', num_thresholds=498)])
     return model
 
@@ -297,8 +303,8 @@ def train(splits, split_id):
     # 生成训练集和验证集
     dataset = create_train_dataset(CFG.batch_size, idx_train_tf)
     vdataset = create_val_dataset(CFG.batch_size, idx_val_tf)
-    # log_dir = "logs/profile/" + datetime.now().strftime("%Y%m%d-%H%M%S")
-    # tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch=2)
+    log_dir = "logs/profile/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch=2)
     history = model.fit(dataset,
                         batch_size=CFG.batch_size,
                         steps_per_epoch=CFG.iteration_per_epoch,
@@ -310,7 +316,8 @@ def train(splits, split_id):
                                 save_weights_only=True,
                                 monitor='val_loss',
                                 mode='min',
-                                save_best_only=True)
+                                save_best_only=True),
+                            tensorboard_callback
                         ])
     plot_history(history, 'history_%d.png' % split_id)
 
