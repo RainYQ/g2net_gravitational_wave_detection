@@ -17,8 +17,8 @@ import tensorflow_addons as tfa
 
 class CFG:
     batch_size = 16
-    epoch = 50
-    iteration_per_epoch = 1024
+    epoch = 20
+    iteration_per_epoch = 14125
     learning_rate = 1e-4
     k_fold = 5
     HEIGHT = 224
@@ -28,6 +28,7 @@ class CFG:
     SEED = 2022
     TRAIN_DATA_SIZE = 560000
     TEST_DATA_SIZE = 226000
+    TTA_STEP = 16
 
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -285,7 +286,7 @@ def inference(count, path):
         for rec in name.numpy():
             assert len(np.unique(rec)) == 1
         rec_ids.append(rec_id_stack.numpy()[:, 0])
-        probs.append(pred)
+        probs.append(pred.reshape(pred.shape[0]))
     crec_ids = np.concatenate(rec_ids)
     cprobs = np.concatenate(probs)
     sub_with_prob = pd.DataFrame({
@@ -293,7 +294,7 @@ def inference(count, path):
         'target': cprobs
     })
     sub_with_prob.describe()
-    sub_with_prob.to_csv("submission_with_prob_" + str(count) + ".csv", index=False)
+    sub_with_prob.to_csv(path + "/submission_with_prob_" + str(count) + ".csv", index=False)
     return sub_with_prob
 
 
