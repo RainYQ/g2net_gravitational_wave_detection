@@ -9,10 +9,10 @@ import efficientnet.tfkeras as efn
 
 class CFG:
     batch_size = 128
-    epoch = 50
+    epoch = 20
     iteration_per_epoch = 875
     learning_rate = 1e-3
-    k_fold = 5
+    k_fold = 1
     HEIGHT = 224
     WIDTH = 224
     RAW_HEIGHT = 27
@@ -20,6 +20,7 @@ class CFG:
     SEED = 2022
     TRAIN_DATA_SIZE = 560000
     TEST_DATA_SIZE = 226000
+    TTA_STEP = 16
 
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -63,6 +64,12 @@ def _preprocess_image_test_function(single_photo):
     image = (image - tf.reduce_min(image)) / (
             tf.reduce_max(image) - tf.reduce_min(image))
     image = tf.image.grayscale_to_rgb(image)
+    image = tf.image.random_contrast(image, lower=1.0, upper=1.3)
+    image = tf.cond(tf.random.uniform([]) < 0.5,
+                    lambda: tf.image.random_saturation(image, lower=0.7, upper=1.3),
+                    lambda: tf.image.random_hue(image, max_delta=0.3))
+    # brightness随机调整
+    image = tf.image.random_brightness(image, 0.3)
     single_photo['data'] = image
     return single_photo['data'], single_photo['id']
 
@@ -117,7 +124,7 @@ def inference(count, path):
         for rec in name.numpy():
             assert len(np.unique(rec)) == 1
         rec_ids.append(rec_id_stack.numpy()[:, 0])
-        probs.append(pred.reshape(pred.shape[0]))
+        probs.append(pred.reshape(pred.shape[0]) / (CFG.TTA_STEP * CFG.k_fold))
     crec_ids = np.concatenate(rec_ids)
     cprobs = np.concatenate(probs)
     sub_with_prob = pd.DataFrame({
@@ -125,16 +132,24 @@ def inference(count, path):
         'target': cprobs
     })
     sub_with_prob.describe()
-    sub_with_prob.to_csv("submission_with_prob_" + str(count) + ".csv", index=False)
     return sub_with_prob
 
 
 # sub_with_prob = sum(
 #     map(
 #         lambda j:
-#         inference(j, "./model").set_index('id'), range(CFG.k_fold)
+#         inference(math.floor(j / CFG.TTA_STEP), "./model").set_index('id'), range(CFG.k_fold * CFG.TTA_STEP)
 #     )
 # ).reset_index()
 # sub_with_prob.to_csv("submission_with_prob.csv", index=False)
 
-inference(0, "./model")
+
+sub_with_prob = sum(
+    map(
+        lambda j:
+        inference(1, "./model").set_index('id'), range(CFG.TTA_STEP)
+    )
+).reset_index()
+sub_with_prob.to_csv("submission_with_prob.csv", index=False)
+
+# inference(0, "./model")
