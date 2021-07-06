@@ -44,26 +44,37 @@
 * resize
 * image standardization
 * gray → rgb
-* gaussian noise (closed)
-* random contrast (closed)
-* random hue (closed)
-* random brightness (closed)
+* random jpeg quality
+* gaussian noise
+* random contrast or random hue
+* random brightness
 ***
 * get one hot label
 * unbatch image data & label
 ***
   ```python
   def _preprocess_image_function(single_photo):
-      image = tf.io.decode_raw(sample['data'], tf.float32)
-      image = tf.reshape(image, [CFG.RAW_HEIGHT, CFG.RAW_WIDTH])
-      image = tf.expand_dims(image, axis=-1)
-      image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
-      image = tf.image.per_image_standardization(image)
-      image = (image - tf.reduce_min(image)) / (
-              tf.reduce_max(image) - tf.reduce_min(image))
-      image = tf.image.grayscale_to_rgb(image)
-      single_photo['data'] = image
-      return single_photo['data'], tf.cast(single_photo['label'], tf.float32)
+    image = tf.io.decode_raw(single_photo['data'], tf.float32)
+    image = tf.reshape(image, [CFG.RAW_HEIGHT, CFG.RAW_WIDTH])
+    image = tf.expand_dims(image, axis=-1)
+    image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
+    image = tf.image.per_image_standardization(image)
+    image = (image - tf.reduce_min(image)) / (
+            tf.reduce_max(image) - tf.reduce_min(image))
+    image = tf.image.grayscale_to_rgb(image)
+    image = tf.image.random_jpeg_quality(image, 80, 100)
+    # 高斯噪声的标准差为 0.3
+    gau = tf.keras.layers.GaussianNoise(0.3)
+    # 以 50％ 的概率为图像添加高斯噪声
+    image = tf.cond(tf.random.uniform([]) < 0.5, lambda: gau(image), lambda: image)
+    image = tf.image.random_contrast(image, lower=0.7, upper=1.3)
+    image = tf.cond(tf.random.uniform([]) < 0.5,
+                    lambda: tf.image.random_saturation(image, lower=0.7, upper=1.3),
+                    lambda: tf.image.random_hue(image, max_delta=0.3))
+    # brightness随机调整
+    image = tf.image.random_brightness(image, 0.3)
+    single_photo['data'] = image
+    return single_photo['data'], tf.cast(single_photo['label'], tf.float32)
   ```
 ***
 ## STEP4: Train
@@ -100,18 +111,47 @@
                                warmup_proportion=0.3, min_lr=1e-6)
   ```
 ## STEP5: Predict
-* Single Fold: LB 0.826
+* Single Fold: LB 0.838
+* Single Fold TTA_STEP = 16: LB 0.838
+* Ensemble 2 Fold TTA_STEP = 16: LB 0.840
+* CV ~= LB
 * On RTX2060, batch_size in predict: 64/128(oom)
-* On RTX2060, 9.5 min / fold
+* On RTX2060, 9.5 min / fold (TTA OFF) 12.5 min / fold (TTA ON)
+* TTA
+  * No Gaussian Noise
+  * random_contrast set (1.0, 1.3)
+  * No random_jpeg_quality
+  ```python
+  def _preprocess_image_test_function(single_photo):
+      image = tf.io.decode_raw(single_photo['data'], tf.float32)
+      image = tf.reshape(image, [CFG.RAW_HEIGHT, CFG.RAW_WIDTH])
+      image = tf.expand_dims(image, axis=-1)
+      image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
+      image = tf.image.per_image_standardization(image)
+      image = (image - tf.reduce_min(image)) / (
+              tf.reduce_max(image) - tf.reduce_min(image))
+      image = tf.image.grayscale_to_rgb(image)
+      image = tf.image.random_contrast(image, lower=1.0, upper=1.3)
+      image = tf.cond(tf.random.uniform([]) < 0.5,
+                      lambda: tf.image.random_saturation(image, lower=0.7, upper=1.3),
+                      lambda: tf.image.random_hue(image, max_delta=0.3))
+      # brightness随机调整
+      image = tf.image.random_brightness(image, 0.3)
+      single_photo['data'] = image
+      return single_photo['data'], single_photo['id']
+  ```
 
 ## STEP6: TODO
-* Test performance for Mel-Spec transformer based on tf
+* ~~Test performance for Mel-Spec transformer based on tf~~
 * **Test hop_length = 128 / 64**
 * Add mixup
 * **Test CosineAnnealing learning rate strategy**
 * Add label smooth
-* **Add image Augmentation : random_brightness ...**
+* Add Random Sign Cut
+* Add Image Random Resize
+* ~~**Add image Augmentation : random_brightness ...**~~
 * **Add sign augmentation : white noise ...**
 * **Use ROC_STAR_Loss https://github.com/iridiumblue/roc-star**
-* **Add TTA** we can use large TTA_STEP
+* ~~**Add TTA** we can use large TTA_STEP~~
 * Test ResNet RegNet(PyTorch)
+* **Use Constant-Q Transform**
