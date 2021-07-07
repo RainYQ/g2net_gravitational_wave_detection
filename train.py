@@ -103,6 +103,19 @@ def _preprocess_image_val_function(single_photo):
     return single_photo['data'], tf.cast(single_photo['label'], tf.float32)
 
 
+def _preprocess_image_val_extra_function(single_photo):
+    image = tf.io.decode_raw(single_photo['data'], tf.float32)
+    image = tf.reshape(image, [CFG.RAW_HEIGHT, CFG.RAW_WIDTH])
+    image = tf.expand_dims(image, axis=-1)
+    image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
+    image = tf.image.per_image_standardization(image)
+    image = (image - tf.reduce_min(image)) / (
+            tf.reduce_max(image) - tf.reduce_min(image))
+    image = tf.image.grayscale_to_rgb(image)
+    single_photo['data'] = image
+    return single_photo['data'], single_photo['id']
+
+
 def create_idx_filter(indice):
     def _filt(i, single_photo):
         return tf.reduce_any(indice == i)
@@ -177,7 +190,19 @@ def create_val_dataset(batchsize, val_idx):
                   .map(_remove_idx))
     dataset = (parsed_val
                .map(_preprocess_image_val_function, num_parallel_calls=AUTOTUNE)
-               .batch(batchsize, num_parallel_calls=AUTOTUNE)
+               .batch(batchsize * 2, num_parallel_calls=AUTOTUNE)
+               .cache())
+    return dataset
+
+
+def create_val_extra_dataset(batchsize, val_idx):
+    global preprocess_dataset
+    parsed_val = (preprocess_dataset
+                  .filter(create_idx_filter(val_idx))
+                  .map(_remove_idx))
+    dataset = (parsed_val
+               .map(_preprocess_image_val_extra_function, num_parallel_calls=AUTOTUNE)
+               .batch(batchsize)
                .cache())
     return dataset
 
@@ -276,11 +301,11 @@ model = create_model()
 # Save as "./submission_with_prob_val_i.csv"
 def inference(count, path):
     idx_val_tf = tf.cast(tf.constant(splits[count][1]), tf.int64)
-    vdataset = create_val_dataset(CFG.batch_size, idx_val_tf)
+    v_test_dataset = create_val_extra_dataset(CFG.batch_size * 2, idx_val_tf)
     model.load_weights(path + "/model_best_%d.h5" % count)
     rec_ids = []
     probs = []
-    for data, name in tqdm(vdataset):
+    for data, name in tqdm(v_test_dataset):
         pred = model.predict_on_batch(tf.reshape(data, [-1, CFG.HEIGHT, CFG.WIDTH, 3]))
         rec_id_stack = tf.reshape(name, [-1, 1])
         for rec in name.numpy():
