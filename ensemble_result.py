@@ -2,6 +2,10 @@ import pandas as pd
 import glob
 
 
+class CFG:
+    Merge_Top_Solution = False
+
+
 def ensemble(data):
     temp = data[0].copy()
     for j in range(len(data) - 1):
@@ -11,7 +15,11 @@ def ensemble(data):
 
 
 workdir = r"./model/results/"
-files = glob.glob(workdir + r"*.csv")
+if CFG.Merge_Top_Solution:
+    files = glob.glob(workdir + r"**/*.csv", recursive=True)
+else:
+    files = glob.glob(workdir + r"*.csv")
+print(len(files), "csv files merged.")
 results = []
 for file in files:
     results.append(pd.read_csv(file))
