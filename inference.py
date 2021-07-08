@@ -147,9 +147,17 @@ def inference(count, path):
 sub_with_prob = sum(
     map(
         lambda j:
-        inference(2, "./model").set_index('id'), range(CFG.TTA_STEP)
+        inference(3, "./model").set_index('id'), range(CFG.TTA_STEP)
     )
 ).reset_index()
-sub_with_prob.to_csv("submission_with_prob.csv", index=False)
+sub_with_prob.to_csv("submission_with_prob_3.csv", index=False)
+
+sub_with_prob = sum(
+    map(
+        lambda j:
+        inference(4, "./model").set_index('id'), range(CFG.TTA_STEP)
+    )
+).reset_index()
+sub_with_prob.to_csv("submission_with_prob_4.csv", index=False)
 
 # inference(0, "./model")
