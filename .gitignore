@@ -142,3 +142,5 @@ tfrecords.003
 /test_tfrecords/
 /model/
 /logs/
+/train_images/
+/test_images/
