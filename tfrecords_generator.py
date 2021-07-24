@@ -4,7 +4,7 @@ import tensorflow as tf
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import threading
+import sys
 import math
 import joblib
 
@@ -59,6 +59,10 @@ def create_dataset(data, i, mode):
 
 
 if __name__ == "__main__":
+    if os.path.exists("./train_tfrecords")
+        os.mkdir("./train_tfrecords")
+    if os.path.exists("./test_tfrecords")
+        os.mkdir("./test_tfrecords")
     # Enable Multi-Thread
     # for n in range(math.ceil(train.shape[0] / NUMBER_IN_TFRECORD)):
     #     t1 = threading.Thread(target=create_dataset, args=(
