@@ -31,6 +31,10 @@ def image_generator(data, mode):
 
 
 if __name__ == "__main__":
+    if os.path.exists("./train_images")
+        os.mkdir("./train_images")
+    if os.path.exists("./test_images")
+        os.mkdir("./test_images")
     image_generator(train[0:THREAD_NUMBER], "train")
     _ = joblib.Parallel(n_jobs=16)(
         joblib.delayed(image_generator)

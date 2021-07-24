@@ -144,3 +144,4 @@ tfrecords.003
 /logs/
 /train_images/
 /test_images/
+/LIGO_data/
