@@ -17,7 +17,7 @@ from scipy.cluster.vq import whiten
 
 class CFG:
     USE_LIGO = False
-    sample_id = '00172aaca5'
+    sample_id = '00000e74ad'
 
 
 def get_file_path(image_id):
@@ -90,7 +90,7 @@ else:
     label = train.loc[train["id"] == CFG.sample_id]["target"].values[0]
     print(CFG.sample_id, ": ", label)
     fileName = get_file_path(CFG.sample_id)
-    strain_seg = np.load(fileName).astype(np.float64)[1]
+    strain_seg = np.load(fileName).astype(np.float64)[0]
     fs = 2048
 
     plt.figure()

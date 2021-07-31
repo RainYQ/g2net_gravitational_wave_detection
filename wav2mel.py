@@ -120,9 +120,9 @@ def tf_test_thread(data):
 
 
 if __name__ == '__main__':
-    if os.path.exists("./train_melspec")
+    if not os.path.exists("./train_melspec"):
         os.mkdir("./train_melspec")
-    if os.path.exists("./test_melspec")
+    if not os.path.exists("./test_melspec"):
         os.mkdir("./test_melspec")
     if not CFG.use_tf:
         _ = joblib.Parallel(n_jobs=16)(

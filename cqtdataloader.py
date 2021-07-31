@@ -1,13 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-times = np.linspace(0.0, 2.0, 1000)
-freqs = np.linspace(20.0, 512.0, 274)
+times = np.linspace(0.0, 2.0, 512)
+freqs = np.linspace(20.0, 512.0, 512)
 
 
 def std_cqt_show(times, freqs, powers, use_vmax_vmin):
     plt.figure()
-    if(use_vmax_vmin):
+    if use_vmax_vmin:
         plt.pcolormesh(freqs, times, powers, vmax=15, vmin=0)
     else:
         plt.pcolormesh(freqs, times, powers)
@@ -19,10 +19,12 @@ def std_cqt_show(times, freqs, powers, use_vmax_vmin):
     plt.show()
 
 
-powers = np.load("power.npy").astype(np.float64)
-std_cqt_show(times, freqs, powers, True)
-# Normalization
-powers = (powers - np.min(powers)) / (np.max(powers) - np.min(powers)) * 255.0
-powers = powers.astype(np.uint8)
-std_cqt_show(times, freqs, powers, False)
+# powers = np.load("power.npy").astype(np.float64)
+powers = np.load("./train_cqt_power/00000e74ad.npy")
+std_cqt_show(times, freqs, powers[0], False)
+# std_cqt_show(times, freqs, powers, True)
+# # Normalization
+# powers = (powers - np.min(powers)) / (np.max(powers) - np.min(powers)) * 255.0
+# powers = powers.astype(np.uint8)
+# std_cqt_show(times, freqs, powers, False)
 
