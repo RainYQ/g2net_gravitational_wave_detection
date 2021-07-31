@@ -138,6 +138,8 @@ tfrecords.003
 # Intermediate Results
 /test_melspec/
 /train_melspec/
+/test_cqt_power/
+/train_cqt_power/
 /train_tfrecords/
 /test_tfrecords/
 /model/
