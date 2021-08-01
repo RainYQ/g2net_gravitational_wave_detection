@@ -20,8 +20,10 @@ def std_cqt_show(times, freqs, powers, use_vmax_vmin):
 
 
 # powers = np.load("power.npy").astype(np.float64)
-powers = np.load("./train_cqt_power/00000e74ad.npy")
+powers = np.load("./train_cqt_power/2ea66bcb54.npy")
 std_cqt_show(times, freqs, powers[0], False)
+std_cqt_show(times, freqs, powers[1], False)
+std_cqt_show(times, freqs, powers[2], False)
 # std_cqt_show(times, freqs, powers, True)
 # # Normalization
 # powers = (powers - np.min(powers)) / (np.max(powers) - np.min(powers)) * 255.0
