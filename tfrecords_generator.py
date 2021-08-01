@@ -24,7 +24,7 @@ if Show:
 
 
 def create_dataset(data, i, mode):
-    with tf.io.TFRecordWriter('E:/' + mode + '_tfrecords/' + mode + '_' + str(int(i)) + '.tfrecords') as writer:
+    with tf.io.TFRecordWriter('F:/' + mode + '_tfrecords/' + mode + '_' + str(int(i)) + '.tfrecords') as writer:
         for id, label in tqdm(zip(data["id"], data["target"])):
             if mode == "train":
                 raw = np.load(os.path.join(TRAIN_DATA_ROOT, id) + ".npy").tobytes()
@@ -61,13 +61,13 @@ if __name__ == "__main__":
     #         test[n * NUMBER_IN_TFRECORD:min((n + 1) * NUMBER_IN_TFRECORD, test.shape[0])], n))
     #     t1.start()
     # Better Performence
-    # _ = joblib.Parallel(n_jobs=16)(
-    #     joblib.delayed(create_dataset)
-    #     (train[n * NUMBER_IN_TFRECORD:min((n + 1) * NUMBER_IN_TFRECORD, train.shape[0])], n, "train")
-    #     for n in range(math.ceil(train.shape[0] / NUMBER_IN_TFRECORD))
-    # )
     _ = joblib.Parallel(n_jobs=16)(
         joblib.delayed(create_dataset)
-        (test[n * NUMBER_IN_TFRECORD:min((n + 1) * NUMBER_IN_TFRECORD, test.shape[0])], n, "test")
-        for n in range(math.ceil(test.shape[0] / NUMBER_IN_TFRECORD))
+        (train[n * NUMBER_IN_TFRECORD:min((n + 1) * NUMBER_IN_TFRECORD, train.shape[0])], n, "train")
+        for n in range(math.ceil(train.shape[0] / NUMBER_IN_TFRECORD))
     )
+    # _ = joblib.Parallel(n_jobs=16)(
+    #     joblib.delayed(create_dataset)
+    #     (test[n * NUMBER_IN_TFRECORD:min((n + 1) * NUMBER_IN_TFRECORD, test.shape[0])], n, "test")
+    #     for n in range(math.ceil(test.shape[0] / NUMBER_IN_TFRECORD))
+    # )
