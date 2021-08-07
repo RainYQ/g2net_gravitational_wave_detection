@@ -13,22 +13,26 @@ from sklearn.model_selection import StratifiedKFold
 from tensorflow.keras import backend as K
 from GroupNormalization import GroupNormalization
 import tensorflow_addons as tfa
+import tensorflow_probability as tfp
 
 
 class CFG:
+    tfrecords_fold_prefix = "./"
     batch_size = 16
     epoch = 20
-    iteration_per_epoch = 14125
+    iteration_per_epoch = 28000
     learning_rate = 1e-4
     k_fold = 5
-    HEIGHT = 224
-    WIDTH = 224
-    RAW_HEIGHT = 27
-    RAW_WIDTH = 128
+    HEIGHT = 256
+    WIDTH = 256
+    RAW_HEIGHT = 512
+    RAW_WIDTH = 512
     SEED = 2022
     TRAIN_DATA_SIZE = 560000
     TEST_DATA_SIZE = 226000
     TTA_STEP = 16
+    mixup = True
+    tensorboard = False
 
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -36,10 +40,8 @@ for gpu in gpus:
     tf.config.experimental.set_memory_growth(gpu, True)
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
-TRAIN_DATA_ROOT = "./train_tfrecords"
-TEST_DATA_ROOT = "./test_tfrecords"
-train_img_lists = os.listdir(TRAIN_DATA_ROOT)
-test_img_lists = os.listdir(TEST_DATA_ROOT)
+TRAIN_DATA_ROOT = os.path.join(CFG.tfrecords_fold_prefix, "train_tfrecords")
+TEST_DATA_ROOT = os.path.join(CFG.tfrecords_fold_prefix, "test_tfrecords")
 
 
 def seed_everything(seed):
@@ -67,14 +69,11 @@ def _parse_image_function(single_photo):
 
 
 def _preprocess_image_function(single_photo):
-    image = tf.io.decode_raw(single_photo['data'], tf.float32)
-    image = tf.reshape(image, [CFG.RAW_HEIGHT, CFG.RAW_WIDTH])
-    image = tf.expand_dims(image, axis=-1)
-    image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
+    image = tf.image.decode_png(single_photo['data'], channels=3)
+    image = tf.image.convert_image_dtype(image, tf.float32)
+    if CFG.RAW_WIDTH != CFG.WIDTH or CFG.RAW_HEIGHT != CFG.HEIGHT:
+        image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
     image = tf.image.per_image_standardization(image)
-    image = (image - tf.reduce_min(image)) / (
-            tf.reduce_max(image) - tf.reduce_min(image))
-    image = tf.image.grayscale_to_rgb(image)
     image = tf.image.random_jpeg_quality(image, 80, 100)
     # 高斯噪声的标准差为 0.3
     gau = tf.keras.layers.GaussianNoise(0.3)
@@ -91,27 +90,21 @@ def _preprocess_image_function(single_photo):
 
 
 def _preprocess_image_val_function(single_photo):
-    image = tf.io.decode_raw(single_photo['data'], tf.float32)
-    image = tf.reshape(image, [CFG.RAW_HEIGHT, CFG.RAW_WIDTH])
-    image = tf.expand_dims(image, axis=-1)
-    image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
+    image = tf.image.decode_png(single_photo['data'], channels=3)
+    image = tf.image.convert_image_dtype(image, tf.float32)
+    if CFG.RAW_WIDTH != CFG.WIDTH or CFG.RAW_HEIGHT != CFG.HEIGHT:
+        image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
     image = tf.image.per_image_standardization(image)
-    image = (image - tf.reduce_min(image)) / (
-            tf.reduce_max(image) - tf.reduce_min(image))
-    image = tf.image.grayscale_to_rgb(image)
     single_photo['data'] = image
     return single_photo['data'], tf.cast(single_photo['label'], tf.float32)
 
 
 def _preprocess_image_val_extra_function(single_photo):
-    image = tf.io.decode_raw(single_photo['data'], tf.float32)
-    image = tf.reshape(image, [CFG.RAW_HEIGHT, CFG.RAW_WIDTH])
-    image = tf.expand_dims(image, axis=-1)
-    image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
+    image = tf.image.decode_png(single_photo['data'], channels=3)
+    image = tf.image.convert_image_dtype(image, tf.float32)
+    if CFG.RAW_WIDTH != CFG.WIDTH or CFG.RAW_HEIGHT != CFG.HEIGHT:
+        image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
     image = tf.image.per_image_standardization(image)
-    image = (image - tf.reduce_min(image)) / (
-            tf.reduce_max(image) - tf.reduce_min(image))
-    image = tf.image.grayscale_to_rgb(image)
     single_photo['data'] = image
     return single_photo['data'], single_photo['id']
 
@@ -127,25 +120,39 @@ def _remove_idx(i, single_photo):
     return single_photo
 
 
+def _mixup(data, targ):
+    indice = tf.range(len(data))
+    indice = tf.random.shuffle(indice)
+    sinp = tf.gather(data, indice, axis=0)
+    starg = tf.gather(targ, indice, axis=0)
+    alpha = 0.2
+    t = tfp.distributions.Beta(alpha, alpha).sample([len(data)])
+    tx = tf.reshape(t, [-1, 1, 1, 1])
+    ty = t
+    x = data * tx + sinp * (1 - tx)
+    y = targ * ty + starg * (1 - ty)
+    return x, y
+
+
 indices = []
 id = []
 label = []
 preprocess_dataset = (raw_image_dataset.map(_parse_image_function, num_parallel_calls=AUTOTUNE)
                       .enumerate())
-for i, sample in tqdm(preprocess_dataset):
-    indices.append(i.numpy())
-    label.append(sample['label'].numpy())
-    id.append(sample['id'].numpy().decode())
+# for i, sample in tqdm(preprocess_dataset):
+#     indices.append(i.numpy())
+#     label.append(sample['label'].numpy())
+#     id.append(sample['id'].numpy().decode())
 
-table = pd.DataFrame({'indices': indices, 'id': id, 'label': label})
-skf = StratifiedKFold(n_splits=5, random_state=CFG.SEED, shuffle=True)
-X = np.array(table.index)
-Y = np.array(list(table.label.values), dtype=np.uint8).reshape(CFG.TRAIN_DATA_SIZE)
-splits = list(skf.split(X, Y))
+# table = pd.DataFrame({'indices': indices, 'id': id, 'label': label})
+# skf = StratifiedKFold(n_splits=5, random_state=CFG.SEED, shuffle=True)
+# X = np.array(table.index)
+# Y = np.array(list(table.label.values), dtype=np.uint8).reshape(CFG.TRAIN_DATA_SIZE)
+# splits = list(skf.split(X, Y))
 # with open("splits.data", 'wb') as file:
 #     pickle.dump(splits, file)
-# with open("splits.data", 'rb') as file:
-#     splits = pickle.load(file)
+with open("splits.data", 'rb') as file:
+    splits = pickle.load(file)
 print("DataSet Split Successful.")
 # print("origin: ", np.sum(np.array(list(table["label"].values), dtype=np.uint8), axis=0))
 # for j in range(5):
@@ -178,8 +185,12 @@ def create_train_dataset(batchsize, train_idx):
                .with_options(opt)
                .repeat()
                .map(_preprocess_image_function, num_parallel_calls=AUTOTUNE)
-               .batch(batchsize, num_parallel_calls=AUTOTUNE)
-               .prefetch(AUTOTUNE))
+               .batch(batchsize, num_parallel_calls=AUTOTUNE))
+    if CFG.mixup:
+        dataset = (dataset.map(_mixup, num_parallel_calls=AUTOTUNE)
+                   .prefetch(AUTOTUNE))
+    else:
+        dataset = dataset.prefetch(AUTOTUNE)
     return dataset
 
 
@@ -202,51 +213,9 @@ def create_val_extra_dataset(batchsize, val_idx):
                   .map(_remove_idx))
     dataset = (parsed_val
                .map(_preprocess_image_val_extra_function, num_parallel_calls=AUTOTUNE)
-               .batch(batchsize)
+               .batch(batchsize, num_parallel_calls=AUTOTUNE)
                .cache())
     return dataset
-
-
-class CosineAnnealing(tf.keras.optimizers.schedules.LearningRateSchedule):
-    def __init__(
-            self,
-            global_steps,
-            learning_rate_max,
-            learning_rate_min,
-            cycle):
-        super().__init__()
-        self.global_steps = tf.cast(global_steps, dtype=tf.float32)
-        self.learning_rate_max = tf.cast(learning_rate_max, dtype=tf.float32)
-        self.learning_rate_min = tf.cast(learning_rate_min, dtype=tf.float32)
-        self.cycle = tf.cast(cycle, dtype=tf.int32)
-        self.learning_rate = tf.Variable(0., tf.float32)
-
-    def __call__(self, step):
-        step_epoch = tf.cast(step, tf.float32) / tf.cast(CFG.iteration_per_epoch, tf.float32)
-        step_epoch = tf.cast(step_epoch, tf.int32)
-        learning_rate = self.learning_rate_min + 0.5 * (self.learning_rate_max - self.learning_rate_min) * \
-                        (1 + tf.math.cos(tf.constant(math.pi, tf.float32) *
-                                         (tf.cast(step_epoch % self.cycle, tf.float32) / tf.cast(self.cycle,
-                                                                                                 tf.float32))))
-        self.learning_rate.assign(learning_rate)
-        return learning_rate
-
-    def get_config(self):
-        return {
-            "global_steps": self.global_steps,
-            "learning_rate_max": self.learning_rate_max,
-            "learning_rate_min": self.learning_rate_min,
-            "cycle": self.cycle
-        }
-
-    def return_lr(self):
-        return self.learning_rate
-
-
-class ShowLR(tf.keras.callbacks.Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        lr = self.model.optimizer.lr.return_lr()
-        print("lr:", lr.numpy())
 
 
 def create_model():
@@ -267,7 +236,7 @@ def create_model():
         tf.keras.layers.Dense(1, kernel_initializer=tf.keras.initializers.he_normal(), activation='sigmoid')])
     # optimizer = tf.keras.optimizers.Adam(CFG.learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=1e-6)
     optimizer = tfa.optimizers.RectifiedAdam(lr=CFG.learning_rate, total_steps=CFG.epoch * CFG.iteration_per_epoch,
-                                             warmup_proportion=0.3, min_lr=1e-6)
+                                             warmup_proportion=0.1, min_lr=1e-5)
     model.compile(optimizer=optimizer,
                   loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
                   metrics=['accuracy', tf.keras.metrics.AUC(name='auc', num_thresholds=498)])
@@ -331,22 +300,34 @@ def train(splits, split_id):
     # 生成训练集和验证集
     dataset = create_train_dataset(CFG.batch_size, idx_train_tf)
     vdataset = create_val_dataset(CFG.batch_size, idx_val_tf)
-    log_dir = "logs/profile/" + datetime.now().strftime("%Y%m%d-%H%M%S")
-    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch=2)
+    if CFG.tensorboard:
+        log_dir = "logs/profile/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+        tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch=2)
+        callbacks = [
+            tf.keras.callbacks.ModelCheckpoint(
+                filepath='./model/model_best_%d.h5' % split_id,
+                save_weights_only=True,
+                monitor='val_loss',
+                mode='min',
+                save_best_only=True),
+            tensorboard_callback
+        ]
+    else:
+        callbacks = [
+            tf.keras.callbacks.ModelCheckpoint(
+                filepath='./model/model_best_%d.h5' % split_id,
+                save_weights_only=True,
+                monitor='val_loss',
+                mode='min',
+                save_best_only=True)
+        ]
     history = model.fit(dataset,
                         batch_size=CFG.batch_size,
                         steps_per_epoch=CFG.iteration_per_epoch,
                         epochs=CFG.epoch,
                         validation_data=vdataset,
-                        callbacks=[
-                            tf.keras.callbacks.ModelCheckpoint(
-                                filepath='./model/model_best_%d.h5' % split_id,
-                                save_weights_only=True,
-                                monitor='val_loss',
-                                mode='min',
-                                save_best_only=True),
-                            tensorboard_callback
-                        ])
+                        callbacks=callbacks
+                        )
     plot_history(history, 'history_%d.png' % split_id)
 
 
