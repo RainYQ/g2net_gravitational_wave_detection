@@ -57,12 +57,12 @@ if __name__ == '__main__':
     if not os.path.exists("./test_cqt_power"):
         os.mkdir("./test_cqt_power")
 
-    # for id in tqdm(train['id'][:10].values):
-    #     save_data_train(id)
+    for id in tqdm(train['id'][:10].values):
+        save_data_train(id)
 
-    _ = joblib.Parallel(n_jobs=16)(
-        joblib.delayed(save_data_train)(id) for id in tqdm(train['id'].values)
-    )
-    _ = joblib.Parallel(n_jobs=16)(
-        joblib.delayed(save_data_test)(id) for id in tqdm(test['id'].values)
-    )
+    # _ = joblib.Parallel(n_jobs=16)(
+    #     joblib.delayed(save_data_train)(id) for id in tqdm(train['id'].values)
+    # )
+    # _ = joblib.Parallel(n_jobs=16)(
+    #     joblib.delayed(save_data_test)(id) for id in tqdm(test['id'].values)
+    # )

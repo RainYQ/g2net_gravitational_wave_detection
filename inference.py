@@ -5,22 +5,25 @@ import tensorflow as tf
 import pandas as pd
 from tqdm import tqdm
 import efficientnet.tfkeras as efn
+import math
 
 
+# Use TPU config
 class CFG:
     batch_size = 128
     epoch = 20
     iteration_per_epoch = 875
     learning_rate = 1e-3
-    k_fold = 1
-    HEIGHT = 224
-    WIDTH = 224
-    RAW_HEIGHT = 27
-    RAW_WIDTH = 128
+    k_fold = 5
+    HEIGHT = 512
+    WIDTH = 512
+    RAW_HEIGHT = 512
+    RAW_WIDTH = 512
     SEED = 2022
     TRAIN_DATA_SIZE = 560000
     TEST_DATA_SIZE = 226000
     TTA_STEP = 16
+    result_folder = "./"
 
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -56,14 +59,11 @@ def _parse_image_function(single_photo):
 
 
 def _preprocess_image_test_function(single_photo):
-    image = tf.io.decode_raw(single_photo['data'], tf.float32)
-    image = tf.reshape(image, [CFG.RAW_HEIGHT, CFG.RAW_WIDTH])
-    image = tf.expand_dims(image, axis=-1)
-    image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
+    image = tf.image.decode_png(single_photo['data'], channels=3)
+    image = tf.image.convert_image_dtype(image, tf.float32)
+    if CFG.RAW_WIDTH != CFG.WIDTH or CFG.RAW_HEIGHT != CFG.HEIGHT:
+        image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
     image = tf.image.per_image_standardization(image)
-    image = (image - tf.reduce_min(image)) / (
-            tf.reduce_max(image) - tf.reduce_min(image))
-    image = tf.image.grayscale_to_rgb(image)
     image = tf.image.random_contrast(image, lower=1.0, upper=1.3)
     image = tf.cond(tf.random.uniform([]) < 0.5,
                     lambda: tf.image.random_saturation(image, lower=0.7, upper=1.3),
@@ -135,29 +135,29 @@ def inference(count, path):
     return sub_with_prob
 
 
+# 5-Fold TTA Sample
+sub_with_prob = sum(
+    map(
+        lambda j:
+        inference(math.floor(j / CFG.TTA_STEP), "./model").set_index('id'), range(CFG.k_fold * CFG.TTA_STEP)
+    )
+).reset_index()
+sub_with_prob.to_csv(os.path.join(CFG.result_folder, "submission_with_prob.csv"), index=False)
+
+
+# Single Fold TTA Sample
 # sub_with_prob = sum(
 #     map(
 #         lambda j:
-#         inference(math.floor(j / CFG.TTA_STEP), "./model").set_index('id'), range(CFG.k_fold * CFG.TTA_STEP)
+#         inference(3, "./model").set_index('id'), range(CFG.TTA_STEP)
 #     )
 # ).reset_index()
-# sub_with_prob.to_csv("submission_with_prob.csv", index=False)
-
-
-sub_with_prob = sum(
-    map(
-        lambda j:
-        inference(3, "./model").set_index('id'), range(CFG.TTA_STEP)
-    )
-).reset_index()
-sub_with_prob.to_csv("submission_with_prob_3.csv", index=False)
-
-sub_with_prob = sum(
-    map(
-        lambda j:
-        inference(4, "./model").set_index('id'), range(CFG.TTA_STEP)
-    )
-).reset_index()
-sub_with_prob.to_csv("submission_with_prob_4.csv", index=False)
-
-# inference(0, "./model")
+# sub_with_prob.to_csv(os.path.join(CFG.result_folder, "submission_with_prob_3.csv"), index=False)
+#
+# sub_with_prob = sum(
+#     map(
+#         lambda j:
+#         inference(4, "./model").set_index('id'), range(CFG.TTA_STEP)
+#     )
+# ).reset_index()
+# sub_with_prob.to_csv(os.path.join(CFG.result_folder, "submission_with_prob_4.csv"), index=False)
