@@ -69,12 +69,12 @@ def _parse_image_function(single_photo):
 
 
 def _preprocess_image_function(single_photo):
-    image = tf.image.decode_png(single_photo['data'], channels=3)
+    image = tf.image.decode_jpeg(single_photo['data'], channels=3)
     image = tf.image.convert_image_dtype(image, tf.float32)
     if CFG.RAW_WIDTH != CFG.WIDTH or CFG.RAW_HEIGHT != CFG.HEIGHT:
         image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
     image = tf.image.per_image_standardization(image)
-    image = tf.image.random_jpeg_quality(image, 80, 100)
+    image = tf.image.random_jpeg_quality(image, 90, 100)
     # 高斯噪声的标准差为 0.3
     gau = tf.keras.layers.GaussianNoise(0.3)
     # 以 50％ 的概率为图像添加高斯噪声
@@ -90,7 +90,7 @@ def _preprocess_image_function(single_photo):
 
 
 def _preprocess_image_val_function(single_photo):
-    image = tf.image.decode_png(single_photo['data'], channels=3)
+    image = tf.image.decode_jpeg(single_photo['data'], channels=3)
     image = tf.image.convert_image_dtype(image, tf.float32)
     if CFG.RAW_WIDTH != CFG.WIDTH or CFG.RAW_HEIGHT != CFG.HEIGHT:
         image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
@@ -100,7 +100,7 @@ def _preprocess_image_val_function(single_photo):
 
 
 def _preprocess_image_val_extra_function(single_photo):
-    image = tf.image.decode_png(single_photo['data'], channels=3)
+    image = tf.image.decode_jpeg(single_photo['data'], channels=3)
     image = tf.image.convert_image_dtype(image, tf.float32)
     if CFG.RAW_WIDTH != CFG.WIDTH or CFG.RAW_HEIGHT != CFG.HEIGHT:
         image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
@@ -139,35 +139,35 @@ id = []
 label = []
 preprocess_dataset = (raw_image_dataset.map(_parse_image_function, num_parallel_calls=AUTOTUNE)
                       .enumerate())
-# for i, sample in tqdm(preprocess_dataset):
-#     indices.append(i.numpy())
-#     label.append(sample['label'].numpy())
-#     id.append(sample['id'].numpy().decode())
+for i, sample in tqdm(preprocess_dataset):
+    indices.append(i.numpy())
+    label.append(sample['label'].numpy())
+    id.append(sample['id'].numpy().decode())
 
-# table = pd.DataFrame({'indices': indices, 'id': id, 'label': label})
-# skf = StratifiedKFold(n_splits=5, random_state=CFG.SEED, shuffle=True)
-# X = np.array(table.index)
-# Y = np.array(list(table.label.values), dtype=np.uint8).reshape(CFG.TRAIN_DATA_SIZE)
-# splits = list(skf.split(X, Y))
-# with open("splits.data", 'wb') as file:
-#     pickle.dump(splits, file)
-with open("splits.data", 'rb') as file:
-    splits = pickle.load(file)
+table = pd.DataFrame({'indices': indices, 'id': id, 'label': label})
+skf = StratifiedKFold(n_splits=5, random_state=CFG.SEED, shuffle=True)
+X = np.array(table.index)
+Y = np.array(list(table.label.values), dtype=np.uint8).reshape(CFG.TRAIN_DATA_SIZE)
+splits = list(skf.split(X, Y))
+with open("splits.data", 'wb') as file:
+    pickle.dump(splits, file)
+# with open("splits.data", 'rb') as file:
+#     splits = pickle.load(file)
 print("DataSet Split Successful.")
-# print("origin: ", np.sum(np.array(list(table["label"].values), dtype=np.uint8), axis=0))
-# for j in range(5):
-#     print("Train Fold", j, ":", np.sum(np.array(list(table["label"][splits[j][0]].values), dtype=np.uint8), axis=0))
-#     print("Val Fold", j, ":", np.sum(np.array(list(table["label"][splits[j][1]].values), dtype=np.uint8), axis=0))
-# for j in range(5):
-#     with open("./k-fold_" + str(j) + ".txt", 'w') as writer:
-#         writer.write("Train:\n")
-#         indic_str = "\n".join([str(l) for l in list(splits[j][0])])
-#         writer.write(indic_str)
-#         writer.write("\n")
-#         writer.write("Val:\n")
-#         indic_str = "\n".join([str(l) for l in list(splits[j][1])])
-#         writer.write(indic_str)
-#     writer.close()
+print("origin: ", np.sum(np.array(list(table["label"].values), dtype=np.uint8), axis=0))
+for j in range(5):
+    print("Train Fold", j, ":", np.sum(np.array(list(table["label"][splits[j][0]].values), dtype=np.uint8), axis=0))
+    print("Val Fold", j, ":", np.sum(np.array(list(table["label"][splits[j][1]].values), dtype=np.uint8), axis=0))
+for j in range(5):
+    with open("./k-fold_" + str(j) + ".txt", 'w') as writer:
+        writer.write("Train:\n")
+        indic_str = "\n".join([str(l) for l in list(splits[j][0])])
+        writer.write(indic_str)
+        writer.write("\n")
+        writer.write("Val:\n")
+        indic_str = "\n".join([str(l) for l in list(splits[j][1])])
+        writer.write(indic_str)
+    writer.close()
 
 opt = tf.data.Options()
 opt.experimental_deterministic = False
@@ -200,9 +200,9 @@ def create_val_dataset(batchsize, val_idx):
                   .filter(create_idx_filter(val_idx))
                   .map(_remove_idx))
     dataset = (parsed_val
+               .cache()
                .map(_preprocess_image_val_function, num_parallel_calls=AUTOTUNE)
-               .batch(batchsize * 2, num_parallel_calls=AUTOTUNE)
-               .cache())
+               .batch(batchsize * 2, num_parallel_calls=AUTOTUNE))
     return dataset
 
 
@@ -212,9 +212,9 @@ def create_val_extra_dataset(batchsize, val_idx):
                   .filter(create_idx_filter(val_idx))
                   .map(_remove_idx))
     dataset = (parsed_val
+               .cache()
                .map(_preprocess_image_val_extra_function, num_parallel_calls=AUTOTUNE)
-               .batch(batchsize, num_parallel_calls=AUTOTUNE)
-               .cache())
+               .batch(batchsize, num_parallel_calls=AUTOTUNE))
     return dataset
 
 

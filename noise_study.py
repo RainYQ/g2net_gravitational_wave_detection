@@ -17,7 +17,7 @@ from scipy.cluster.vq import whiten
 
 class CFG:
     USE_LIGO = False
-    sample_id = '00000e74ad'
+    sample_id = 'a1a83db205'
 
 
 def get_file_path(image_id):
