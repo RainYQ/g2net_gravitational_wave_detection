@@ -30,6 +30,10 @@
   plt.yscale('log')
   ```
 * Use ```cv2.resize``` resize to 512x512
+* kaggle dataset
+  * https://www.kaggle.com/rainyq/cqt-dataset-encode-jpeg
+  * https://www.kaggle.com/rainyq/cqt-dataset-encode-jpeg-test
+  * https://www.kaggle.com/rainyq/split-data
 ## STEP2: Make TFRecords
 * train <br/>
   ```python
@@ -69,7 +73,7 @@
 ***
   ```python
   def _preprocess_image_function(single_photo):
-    image = tf.image.decode_png(single_photo['data'], channels=3)
+    image = tf.image.decode_jpeg(single_photo['data'], channels=3)
     image = tf.image.convert_image_dtype(image, tf.float32)
     if CFG.RAW_WIDTH != CFG.WIDTH or CFG.RAW_HEIGHT != CFG.HEIGHT:
         image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])

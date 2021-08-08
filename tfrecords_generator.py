@@ -9,7 +9,7 @@ import math
 import joblib
 
 Show = False
-NUMBER_IN_TFRECORD = 1024
+NUMBER_IN_TFRECORD = 4096
 TRAIN_DATA_ROOT = "F:/train_cqt_power"
 TEST_DATA_ROOT = "F:/test_cqt_power"
 train = pd.read_csv('training_labels.csv')
@@ -29,7 +29,8 @@ def create_dataset(data, i, mode):
             if mode == "train":
                 image = np.load(os.path.join(TRAIN_DATA_ROOT, id) + ".npy")
                 image = np.moveaxis(image, 0, -1)
-                raw = tf.image.encode_png(image).numpy()
+                image = np.flip(image, 0)
+                raw = tf.image.encode_jpeg(image, quality=100).numpy()
                 features = tf.train.Features(feature={
                     'id': tf.train.Feature(bytes_list=tf.train.BytesList(value=[id.encode('utf-8')])),
                     'data': tf.train.Feature(bytes_list=tf.train.BytesList(value=[raw])),
@@ -38,6 +39,7 @@ def create_dataset(data, i, mode):
             elif mode == "test":
                 image = np.load(os.path.join(TEST_DATA_ROOT, id) + ".npy")
                 image = np.moveaxis(image, 0, -1)
+                image = np.flip(image, 0)
                 raw = tf.image.encode_png(image).numpy()
                 features = tf.train.Features(feature={
                     'id': tf.train.Feature(bytes_list=tf.train.BytesList(value=[id.encode('utf-8')])),
