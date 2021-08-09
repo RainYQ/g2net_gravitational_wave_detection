@@ -19,7 +19,7 @@ import tensorflow_probability as tfp
 class CFG:
     tfrecords_fold_prefix = "./"
     batch_size = 16
-    epoch = 20
+    epoch = 80
     iteration_per_epoch = 28000
     learning_rate = 1e-4
     k_fold = 5
@@ -179,7 +179,7 @@ def create_train_dataset(batchsize, train_idx):
                     .filter(create_idx_filter(train_idx))
                     .map(_remove_idx))
     dataset = (parsed_train
-               .cache()
+               # .cache()
                # .shuffle(len(train_idx))
                .shuffle(10240)
                .with_options(opt)
@@ -200,7 +200,7 @@ def create_val_dataset(batchsize, val_idx):
                   .filter(create_idx_filter(val_idx))
                   .map(_remove_idx))
     dataset = (parsed_val
-               .cache()
+               # .cache()
                .map(_preprocess_image_val_function, num_parallel_calls=AUTOTUNE)
                .batch(batchsize * 2, num_parallel_calls=AUTOTUNE))
     return dataset
@@ -212,9 +212,9 @@ def create_val_extra_dataset(batchsize, val_idx):
                   .filter(create_idx_filter(val_idx))
                   .map(_remove_idx))
     dataset = (parsed_val
-               .cache()
+               # .cache()
                .map(_preprocess_image_val_extra_function, num_parallel_calls=AUTOTUNE)
-               .batch(batchsize, num_parallel_calls=AUTOTUNE))
+               .batch(batchsize * 2, num_parallel_calls=AUTOTUNE))
     return dataset
 
 
