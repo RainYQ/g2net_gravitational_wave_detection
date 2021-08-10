@@ -235,7 +235,8 @@ def create_model():
         tf.keras.layers.Dropout(0.5),
         tf.keras.layers.Dense(1, kernel_initializer=tf.keras.initializers.he_normal(), activation='sigmoid')])
     # optimizer = tf.keras.optimizers.Adam(CFG.learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=1e-6)
-    optimizer = tfa.optimizers.RectifiedAdam(lr=CFG.learning_rate, total_steps=CFG.epoch * CFG.iteration_per_epoch,
+    optimizer = tfa.optimizers.RectifiedAdam(learning_rate=CFG.learning_rate,
+                                             total_steps=CFG.epoch * CFG.iteration_per_epoch,
                                              warmup_proportion=0.1, min_lr=1e-5)
     model.compile(optimizer=optimizer,
                   loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
