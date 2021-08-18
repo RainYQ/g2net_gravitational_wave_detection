@@ -33,6 +33,7 @@ class CFG:
     TTA_STEP = 16
     mixup = True
     tensorboard = False
+    split_data_location = "./data_locate"
 
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -149,9 +150,9 @@ skf = StratifiedKFold(n_splits=5, random_state=CFG.SEED, shuffle=True)
 X = np.array(table.index)
 Y = np.array(list(table.label.values), dtype=np.uint8).reshape(CFG.TRAIN_DATA_SIZE)
 splits = list(skf.split(X, Y))
-with open("splits.data", 'wb') as file:
+with open(os.path.join(CFG.split_data_location, "splits.data"), 'wb') as file:
     pickle.dump(splits, file)
-# with open("splits.data", 'rb') as file:
+# with open(os.path.join(CFG.split_data_location, "splits.data"), 'rb') as file:
 #     splits = pickle.load(file)
 print("DataSet Split Successful.")
 print("origin: ", np.sum(np.array(list(table["label"].values), dtype=np.uint8), axis=0))
@@ -159,7 +160,7 @@ for j in range(5):
     print("Train Fold", j, ":", np.sum(np.array(list(table["label"][splits[j][0]].values), dtype=np.uint8), axis=0))
     print("Val Fold", j, ":", np.sum(np.array(list(table["label"][splits[j][1]].values), dtype=np.uint8), axis=0))
 for j in range(5):
-    with open("./k-fold_" + str(j) + ".txt", 'w') as writer:
+    with open(os.path.join(CFG.split_data_location, "k-fold_" + str(j) + ".txt"), 'w') as writer:
         writer.write("Train:\n")
         indic_str = "\n".join([str(l) for l in list(splits[j][0])])
         writer.write(indic_str)
