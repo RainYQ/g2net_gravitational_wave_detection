@@ -16,6 +16,20 @@ from scipy.signal import butter, sosfiltfilt
 import time
 
 
+class CFG:
+    origin_data_prefix = "F:"
+    sample_id = '0021f9dd71'
+    part = 'test'
+    sample_rate = 2048.0
+    channel = 0
+    fmin = 20.0
+    fmax = 512.0
+    nv = 16
+    whiten = True
+    bandpass = True
+    trainable = False
+
+
 # calculate CWT of input signal
 class Wavelet1D(keras.layers.Layer):
     def __init__(self, nv=12, sr=1., flow=0., fhigh=0.5, batch_size=None, trainable=False):
@@ -161,7 +175,8 @@ def whiten(signal):
     hann = tf.signal.hann_window(signal.shape[0], periodic=True)
     spec = tf.signal.fft(tf.cast(signal * hann, tf.complex128))
     mag = tf.math.sqrt(tf.math.real(spec * tf.math.conj(spec)))
-    return tf.cast(tf.math.real(tf.signal.ifft(spec / tf.cast(mag, tf.complex128))), tf.float32) * tf.math.sqrt(signal.shape[0] / 2)
+    return tf.cast(tf.math.real(tf.signal.ifft(spec / tf.cast(mag, tf.complex128))), tf.float32) * tf.math.sqrt(
+        signal.shape[0] / 2)
 
 
 def butter_bandpass(lowcut, highcut, fs, order=8):
@@ -188,13 +203,14 @@ d_raw = np.load('F:/test/0/0/2/0021f9dd71.npy').astype(np.float64)[0]
 d = (d_raw - np.min(d_raw)) / (np.max(d_raw) - np.min(d_raw))
 d = (d - 0.5) * 2
 plt.figure()
-# bandpass filter
-d = butter_bandpass_filter(d)
 # tukey
 # d = tukey_window(d, 0.1, 4096)
+# bandpass filter
+if CFG.bandpass:
+    d = butter_bandpass_filter(d)
+
 d_torch = whiten_torch(d)
 d_tf = whiten(d)
-
 plt.figure()
 plt.plot(d_torch, label='torch')
 plt.plot(d_tf.numpy(), label='tensorflow')
@@ -202,18 +218,20 @@ plt.plot(d_torch - d_tf.numpy(), label='difference')
 plt.legend()
 plt.show()
 
-d = whiten(d)
+if CFG.whiten:
+    d = whiten(d)
 
 d = tf.cast(d, tf.float32)
 
 start = time.time()
-Wavelet1D(nv=16, sr=2048., flow=20, fhigh=512, batch_size=1)(tf.expand_dims(d, axis=0))
+Wavelet1D(CFG.nv, sr=CFG.sample_rate, flow=CFG.fmin, fhigh=CFG.fmax, batch_size=1, trainable=CFG.trainable)(tf.expand_dims(d, axis=0))
 end = time.time()
 print('Time cost:', end - start)
 
 plt.figure()
 start = time.time()
-y = cwt(tf.expand_dims(d, axis=0), nv=16, sr=2048., flow=20, fhigh=512, batch_size=1)
+y = cwt(tf.expand_dims(d, axis=0), nv=CFG.nv, sr=CFG.sample_rate, flow=CFG.fmin,
+        fhigh=CFG.fmax, batch_size=1, trainable=CFG.trainable)
 end = time.time()
 print('Time cost:', end - start)
 y = MinMaxScaler(y, 0, 1)
