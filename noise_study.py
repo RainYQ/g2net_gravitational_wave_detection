@@ -17,13 +17,13 @@ from scipy.cluster.vq import whiten
 
 class CFG:
     USE_LIGO = False
-    sample_id = '000a5b6e5c'
-    part = 'train'
-    channel = 1
+    sample_id = '0021f9dd71'
+    part = 'test'
+    channel = 0
     # Use for GWpy
-    whiten = False
+    whiten = True
     # Use for All
-    clip = True
+    clip = False
     fig_save_path = "./cqt_analysis_sample"
     origin_data_prefix = "/mnt/f"
 
