@@ -19,10 +19,10 @@ import os
 
 class CFG:
     wave_data_prefix = "F:/"
-    sample_id = '00090c52ce'
+    sample_id = '12dfed0906'
     mode = 'train'
     sample_rate = 2048.0
-    channel = 1
+    channel = 0
     fmin = 20.0
     fmax = 512.0
     nv = 32
@@ -33,6 +33,8 @@ class CFG:
     len = 4096
     tukey = tf.cast(scipy.signal.windows.get_window(('tukey', ts), len), tf.float32)
     use_tukey = True
+    HEIGHT = 256
+    WIDTH = 256
 
 
 def get_file_path(image_id, mode):
@@ -213,9 +215,8 @@ d_raw = np.load(get_file_path(CFG.sample_id, CFG.mode)).astype(np.float64).astyp
 # Min Max Scaler -1 1
 d = (d_raw - np.min(d_raw)) / (np.max(d_raw) - np.min(d_raw))
 d = (d - 0.5) * 2
+d = d.astype(np.float32)
 plt.figure()
-# tukey
-# d = tukey_window(d, 0.1, 4096)
 # bandpass filter
 if CFG.bandpass:
     d = butter_bandpass_filter(d)
@@ -246,9 +247,8 @@ y = cwt(tf.expand_dims(d, axis=0), nv=CFG.nv, sr=CFG.sample_rate, flow=CFG.fmin,
         fhigh=CFG.fmax, batch_size=1, trainable=CFG.trainable)
 end = time.time()
 print('Time cost:', end - start)
+y = tf.squeeze(tf.image.resize(tf.expand_dims(tf.squeeze(y), -1), (CFG.HEIGHT, CFG.WIDTH)))
 y = MinMaxScaler(y, 0, 1)
-# Remove batch size dim
-y = tf.squeeze(y)
 # flip for pcolormesh
 y = np.flip(y.numpy(), 0)
 plt.pcolormesh(y)
