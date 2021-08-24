@@ -14,20 +14,30 @@ import torch
 from torch.fft import fft, ifft
 from scipy.signal import butter, sosfiltfilt
 import time
+import os
 
 
 class CFG:
-    origin_data_prefix = "F:"
-    sample_id = '0021f9dd71'
-    part = 'test'
+    wave_data_prefix = "F:/"
+    sample_id = '00090c52ce'
+    mode = 'train'
     sample_rate = 2048.0
-    channel = 0
+    channel = 1
     fmin = 20.0
     fmax = 512.0
-    nv = 16
+    nv = 32
     whiten = True
     bandpass = True
     trainable = False
+    ts = 0.1
+    len = 4096
+    tukey = tf.cast(scipy.signal.windows.get_window(('tukey', ts), len), tf.float32)
+    use_tukey = True
+
+
+def get_file_path(image_id, mode):
+    return os.path.join(CFG.wave_data_prefix,
+                        "{}/{}/{}/{}/{}.npy".format(mode, image_id[0], image_id[1], image_id[2], image_id))
 
 
 # calculate CWT of input signal
@@ -165,15 +175,16 @@ def whiten_torch(signal):
     hann = torch.hann_window(len(signal), periodic=True, dtype=float)
     spec = fft(torch.from_numpy(signal.copy()).float() * hann)
     mag = torch.sqrt(torch.real(spec * torch.conj(spec)))
-    cmx = spec / mag
-    real = ifft(cmx)
     return torch.real(ifft(spec / mag)).numpy() * np.sqrt(len(signal) / 2)
 
 
 def whiten(signal):
     signal = tf.cast(signal, tf.float32)
-    hann = tf.signal.hann_window(signal.shape[0], periodic=True)
-    spec = tf.signal.fft(tf.cast(signal * hann, tf.complex128))
+    if CFG.use_tukey:
+        window = CFG.tukey
+    else:
+        window = tf.signal.hann_window(signal.shape[0], periodic=True)
+    spec = tf.signal.fft(tf.cast(signal * window, tf.complex128))
     mag = tf.math.sqrt(tf.math.real(spec * tf.math.conj(spec)))
     return tf.cast(tf.math.real(tf.signal.ifft(spec / tf.cast(mag, tf.complex128))), tf.float32) * tf.math.sqrt(
         signal.shape[0] / 2)
@@ -193,12 +204,12 @@ def butter_bandpass_filter(data):
     return y
 
 
-def tukey_window(data, ts, len):
-    window = scipy.signal.windows.get_window(('tukey', ts), len)
+def tukey_window(data):
+    window = CFG.tukey
     return data * window
 
 
-d_raw = np.load('F:/test/0/0/2/0021f9dd71.npy').astype(np.float64)[0]
+d_raw = np.load(get_file_path(CFG.sample_id, CFG.mode)).astype(np.float64).astype(np.float64)[CFG.channel]
 # Min Max Scaler -1 1
 d = (d_raw - np.min(d_raw)) / (np.max(d_raw) - np.min(d_raw))
 d = (d - 0.5) * 2
@@ -224,7 +235,8 @@ if CFG.whiten:
 d = tf.cast(d, tf.float32)
 
 start = time.time()
-Wavelet1D(CFG.nv, sr=CFG.sample_rate, flow=CFG.fmin, fhigh=CFG.fmax, batch_size=1, trainable=CFG.trainable)(tf.expand_dims(d, axis=0))
+Wavelet1D(CFG.nv, sr=CFG.sample_rate, flow=CFG.fmin, fhigh=CFG.fmax, batch_size=1, trainable=CFG.trainable)(
+    tf.expand_dims(d, axis=0))
 end = time.time()
 print('Time cost:', end - start)
 
