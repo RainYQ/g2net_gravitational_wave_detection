@@ -25,7 +25,6 @@ for gpu in gpus:
 
 class CFG:
     sample_rate = 2048.0
-    channel = 1
     fmin = 20.0
     fmax = 512.0
     nv = 32
@@ -87,8 +86,7 @@ def cwt_pre(shape, nv=16, sr=2048.0, flow=20.0, fhigh=512.0, trainable=False):
     for jj, scale in enumerate(scales):
         expnt = -(scale * omega - 6) ** 2 / 2 * (omega > 0)
         _wft[jj,] = 2 * np.exp(expnt) * (omega > 0)
-    # parameters we want to use during call():
-    wft = tf.Variable(_wft, trainable=trainable)  # yes, the wavelets can be trainable if desired
+    wft = tf.Variable(_wft, trainable=trainable)
     padvalue = padvalue
     num_scales = scales.shape[-1]
     return wft, padvalue, num_scales
@@ -113,7 +111,6 @@ def cwt(input, flow=20.0, fhigh=512.0, batch_size=None):
     assert fhigh > flow, 'fhigh parameters must be > flow!'
     assert batch_size is not None, 'batch size must be set!'
     assert len(input.shape) == 2, 'Input dimension must be 2! Dimension is {}'.format(len(input.shape))
-    # wft, padvalue, num_scales = cwt_pre(input.shape, nv, sr, flow, fhigh, trainable)
     max_loop = tf.shape(input)[0]
 
     @tf.function
@@ -134,8 +131,7 @@ def cwt(input, flow=20.0, fhigh=512.0, batch_size=None):
                            loop_vars=(tf.constant(0, dtype=tf.int32),
                                       tf.zeros([batch_size, num_scales, input.shape[-1]],
                                                dtype=tf.float32)))
-    return tf.squeeze(tf.image.resize(MinMaxScaler(tf.expand_dims(tf.squeeze(cwt), -1), 0.0, 1.0), (CFG.HEIGHT, CFG.WIDTH)))
-
+    return MinMaxScaler(tf.squeeze(tf.image.resize(tf.expand_dims(tf.squeeze(cwt), -1), (CFG.HEIGHT, CFG.WIDTH))), 0.0, 1.0)
 
 @tf.function
 def MinMaxScaler(data, lower, upper):
