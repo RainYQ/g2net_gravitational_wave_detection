@@ -41,7 +41,13 @@ def create_dataset(data, i, mode):
             os.path.join(
                 CFG.tfrecords_prefix + mode + '_tfrecords/' + mode + '_' + str(int(i)) + '.tfrecords')) as writer:
         for id, label in tqdm(zip(data["id"], data["target"])):
-            raw = np.load(get_file_path(id, mode)).astype(np.float32).tobytes()
+            data = np.load(get_file_path(id, mode)).astype(np.float64)
+            for i in range(data.shape[0]):
+                # Min Max Scaler -1 1
+                data[i, :] = (data[i, :] - np.min(data[i, :])) / (np.max(data[i, :]) - np.min(data[i, :]))
+                data[i, :] = (data[i, :] - 0.5) * 2.0
+                # Save Space
+            raw = data.astype(np.float32).tobytes()
             if mode == "train":
                 features = tf.train.Features(feature={
                     'id': tf.train.Feature(bytes_list=tf.train.BytesList(value=[id.encode('utf-8')])),

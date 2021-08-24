@@ -199,7 +199,7 @@ def tukey_window(data, ts, len):
 
 
 d_raw = np.load('F:/test/0/0/2/0021f9dd71.npy').astype(np.float64)[0]
-# Min Max Scalar -1 1
+# Min Max Scaler -1 1
 d = (d_raw - np.min(d_raw)) / (np.max(d_raw) - np.min(d_raw))
 d = (d - 0.5) * 2
 plt.figure()
