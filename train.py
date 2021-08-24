@@ -33,7 +33,7 @@ class CFG:
     TTA_STEP = 16
     mixup = True
     tensorboard = False
-    split_data_location = "./data_locate"
+    split_data_location = "./data_local"
 
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
