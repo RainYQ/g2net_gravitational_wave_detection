@@ -19,7 +19,7 @@ import os
 
 class CFG:
     wave_data_prefix = "F:/"
-    sample_id = '12dfed0906'
+    sample_id = '129cf61472'
     mode = 'train'
     sample_rate = 2048.0
     channel = 0
@@ -130,7 +130,6 @@ def cwt_pre(shape, nv=16, sr=2048.0, flow=20.0, fhigh=512.0, trainable=False):
         _wft[jj,] = 2 * np.exp(expnt) * (omega > 0)
     # parameters we want to use during call():
     wft = tf.Variable(_wft, trainable=trainable)  # yes, the wavelets can be trainable if desired
-    padvalue = padvalue
     num_scales = scales.shape[-1]
     return wft, padvalue, num_scales
 
@@ -141,26 +140,13 @@ def cwt(input, nv=16, sr=2048.0, flow=20.0, fhigh=512.0, batch_size=None, traina
     assert batch_size is not None, 'batch size must be set!'
     assert len(input.shape) == 2, 'Input dimension must be 2! Dimension is {}'.format(len(input.shape))
     wft, padvalue, num_scales = cwt_pre(input.shape, nv, sr, flow, fhigh, trainable)
-    max_loop = tf.shape(input)[0]
-
-    def sum_cwt(i, pre_data):
-        next_data = tf.nn.embedding_lookup(input, i)
-        x = tf.concat([tf.reverse(next_data[0:padvalue], axis=[0]), next_data,
-                       tf.reverse(next_data[-padvalue:], axis=[0])], 0)
-        f = tf.signal.fft(tf.cast(x, tf.complex64))
-        cwtcfs = tf.signal.ifft(
-            tnp.kron(tf.ones([num_scales, 1], dtype=tf.complex64), f) * tf.cast(wft, tf.complex64))
-        logcwt = tf.math.log(tf.math.abs(cwtcfs[:, padvalue:padvalue + next_data.shape[-1]]))
-        pre_data = tf.tensor_scatter_nd_add(pre_data, indices=[[i]], updates=[logcwt])
-        i_next = i + 1
-        return i_next, pre_data
-
-    _, cwt = tf.while_loop(cond=lambda i, result: tf.less(i, max_loop),
-                           body=sum_cwt,
-                           loop_vars=(tf.constant(0, dtype=tf.int32),
-                                      tf.zeros([batch_size, num_scales, input.shape[-1]],
-                                               dtype=tf.float32)))
-    return cwt
+    x = tf.concat([tf.reverse(input[:, 0:padvalue], axis=[1]), input,
+                   tf.reverse(input[:, -padvalue:], axis=[1])], 1)
+    f = tf.signal.fft(tf.cast(x, tf.complex64))
+    cwtcfs = tf.signal.ifft(
+        tf.transpose(tf.tile(tf.expand_dims(f, 0), [num_scales, 1, 1]), [1, 0, 2]) * tf.cast(wft, tf.complex64))
+    logcwt = tf.math.log(tf.math.abs(cwtcfs[:, :, padvalue:padvalue + input.shape[-1]]))
+    return logcwt
 
 
 def MinMaxScaler(data, lower, upper):
@@ -174,22 +160,21 @@ def MinMaxScaler(data, lower, upper):
 
 
 def whiten_torch(signal):
-    hann = torch.hann_window(len(signal), periodic=True, dtype=float)
+    hann = torch.hann_window(signal.shape[-1], periodic=True, dtype=float)
     spec = fft(torch.from_numpy(signal.copy()).float() * hann)
     mag = torch.sqrt(torch.real(spec * torch.conj(spec)))
-    return torch.real(ifft(spec / mag)).numpy() * np.sqrt(len(signal) / 2)
+    return torch.real(ifft(spec / mag)).numpy() * np.sqrt(signal.shape[-1] / 2)
 
 
 def whiten(signal):
-    signal = tf.cast(signal, tf.float32)
     if CFG.use_tukey:
         window = CFG.tukey
     else:
-        window = tf.signal.hann_window(signal.shape[0], periodic=True)
+        window = tf.signal.hann_window(signal.shape[-1], periodic=True)
     spec = tf.signal.fft(tf.cast(signal * window, tf.complex128))
     mag = tf.math.sqrt(tf.math.real(spec * tf.math.conj(spec)))
     return tf.cast(tf.math.real(tf.signal.ifft(spec / tf.cast(mag, tf.complex128))), tf.float32) * tf.math.sqrt(
-        signal.shape[0] / 2)
+        signal.shape[-1] / 2)
 
 
 def butter_bandpass(lowcut, highcut, fs, order=8):
@@ -211,7 +196,7 @@ def tukey_window(data):
     return data * window
 
 
-d_raw = np.load(get_file_path(CFG.sample_id, CFG.mode)).astype(np.float64).astype(np.float64)[CFG.channel]
+d_raw = np.load(get_file_path(CFG.sample_id, CFG.mode)).astype(np.float64).astype(np.float64)
 # Min Max Scaler -1 1
 d = (d_raw - np.min(d_raw)) / (np.max(d_raw) - np.min(d_raw))
 d = (d - 0.5) * 2
@@ -223,11 +208,13 @@ if CFG.bandpass:
 
 d_torch = whiten_torch(d)
 d_tf = whiten(d)
-plt.figure()
-plt.plot(d_torch, label='torch')
-plt.plot(d_tf.numpy(), label='tensorflow')
-plt.plot(d_torch - d_tf.numpy(), label='difference')
-plt.legend()
+for i in range(d_torch.shape[0]):
+    plt.figure()
+    plt.plot(d_torch[i, :], label='torch')
+    plt.plot(d_tf.numpy()[i, :], label='tensorflow')
+    plt.plot(d_torch[i, :] - d_tf.numpy()[i, :], label='difference')
+    plt.legend()
+    plt.title('Channel ' + str(i))
 plt.show()
 
 if CFG.whiten:
@@ -236,20 +223,30 @@ if CFG.whiten:
 d = tf.cast(d, tf.float32)
 
 start = time.time()
-Wavelet1D(CFG.nv, sr=CFG.sample_rate, flow=CFG.fmin, fhigh=CFG.fmax, batch_size=1, trainable=CFG.trainable)(
-    tf.expand_dims(d, axis=0))
+y = Wavelet1D(CFG.nv, sr=CFG.sample_rate, flow=CFG.fmin, fhigh=CFG.fmax, batch_size=d.shape[0], trainable=CFG.trainable)(d)
 end = time.time()
 print('Time cost:', end - start)
+y = tf.transpose(y, (1, 2, 0))
+y = tf.image.resize(y, (CFG.HEIGHT, CFG.WIDTH))
+y = MinMaxScaler(y, 0, 1)
+# flip for pcolormesh
+y = np.flip(y.numpy()[:, :, 0], 0)
+data_origin = y
+plt.pcolormesh(y)
+plt.show()
 
 plt.figure()
 start = time.time()
-y = cwt(tf.expand_dims(d, axis=0), nv=CFG.nv, sr=CFG.sample_rate, flow=CFG.fmin,
+y = cwt(d, nv=CFG.nv, sr=CFG.sample_rate, flow=CFG.fmin,
         fhigh=CFG.fmax, batch_size=1, trainable=CFG.trainable)
 end = time.time()
 print('Time cost:', end - start)
-y = tf.squeeze(tf.image.resize(tf.expand_dims(tf.squeeze(y), -1), (CFG.HEIGHT, CFG.WIDTH)))
+y = tf.transpose(y, (1, 2, 0))
+y = tf.image.resize(y, (CFG.HEIGHT, CFG.WIDTH))
 y = MinMaxScaler(y, 0, 1)
 # flip for pcolormesh
-y = np.flip(y.numpy(), 0)
+y = np.flip(y.numpy()[:, :, 0], 0)
 plt.pcolormesh(y)
 plt.show()
+data_optimize = y
+print(np.max(data_origin - data_optimize))

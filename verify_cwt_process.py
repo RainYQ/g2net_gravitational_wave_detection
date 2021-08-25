@@ -80,38 +80,18 @@ wft, padvalue, num_scales = cwt_pre((1, CFG.len),
 
 
 @tf.function
-def kron(a, b):
-    return tf.numpy_function(np.kron, [a, b], tf.complex64)
-
-
-@tf.function
 # Change to function
 def cwt(input, flow=20.0, fhigh=512.0, batch_size=None):
     assert fhigh > flow, 'fhigh parameters must be > flow!'
     assert batch_size is not None, 'batch size must be set!'
     assert len(input.shape) == 2, 'Input dimension must be 2! Dimension is {}'.format(len(input.shape))
-    # wft, padvalue, num_scales = cwt_pre(input.shape, nv, sr, flow, fhigh, trainable)
-    max_loop = tf.shape(input)[0]
-
-    @tf.function
-    def sum_cwt(i, pre_data):
-        next_data = tf.nn.embedding_lookup(input, i)
-        x = tf.concat([tf.reverse(next_data[0:padvalue], axis=[0]), next_data,
-                       tf.reverse(next_data[-padvalue:], axis=[0])], 0)
-        f = tf.signal.fft(tf.cast(x, tf.complex64))
-        cwtcfs = tf.signal.ifft(
-            kron(tf.ones([num_scales, 1], dtype=tf.complex64), f) * tf.cast(wft, tf.complex64))
-        logcwt = tf.math.log(tf.math.abs(cwtcfs[:, padvalue:padvalue + next_data.shape[-1]]))
-        pre_data = tf.tensor_scatter_nd_add(pre_data, indices=[[i]], updates=[logcwt])
-        i_next = i + 1
-        return i_next, pre_data
-
-    _, cwt = tf.while_loop(cond=lambda i, result: tf.less(i, max_loop),
-                           body=sum_cwt,
-                           loop_vars=(tf.constant(0, dtype=tf.int32),
-                                      tf.zeros([batch_size, num_scales, input.shape[-1]],
-                                               dtype=tf.float32)))
-    return MinMaxScaler(tf.squeeze(tf.image.resize(tf.expand_dims(tf.squeeze(cwt), -1), (CFG.HEIGHT, CFG.WIDTH))), 0.0, 1.0)
+    x = tf.concat([tf.reverse(input[:, 0:padvalue], axis=[1]), input,
+                   tf.reverse(input[:, -padvalue:], axis=[1])], 1)
+    f = tf.signal.fft(tf.cast(x, tf.complex64))
+    cwtcfs = tf.signal.ifft(
+        tf.transpose(tf.tile(tf.expand_dims(f, 0), [num_scales, 1, 1]), [1, 0, 2]) * tf.cast(wft, tf.complex64))
+    logcwt = tf.math.log(tf.math.abs(cwtcfs[:, :, padvalue:padvalue + input.shape[-1]]))
+    return MinMaxScaler(tf.image.resize(tf.transpose(logcwt, (1, 2, 0)), (CFG.HEIGHT, CFG.WIDTH)), 0.0, 1.0)
 
 
 @tf.function
@@ -130,20 +110,11 @@ def whiten(signal):
     if CFG.use_tukey:
         window = CFG.tukey
     else:
-        window = tf.signal.hann_window(signal.shape[1], periodic=True)
-    spec = tf.signal.fft(tf.cast(signal[0, :] * window, tf.complex128))
+        window = tf.signal.hann_window(signal.shape[-1], periodic=True)
+    spec = tf.signal.fft(tf.cast(signal * window, tf.complex128))
     mag = tf.math.sqrt(tf.math.real(spec * tf.math.conj(spec)))
-    channel_0 = tf.cast(tf.math.real(tf.signal.ifft(spec / tf.cast(mag, tf.complex128))), tf.float32) * tf.math.sqrt(
-        signal.shape[1] / 2)
-    spec = tf.signal.fft(tf.cast(signal[1, :] * window, tf.complex128))
-    mag = tf.math.sqrt(tf.math.real(spec * tf.math.conj(spec)))
-    channel_1 = tf.cast(tf.math.real(tf.signal.ifft(spec / tf.cast(mag, tf.complex128))), tf.float32) * tf.math.sqrt(
-        signal.shape[1] / 2)
-    spec = tf.signal.fft(tf.cast(signal[2, :] * window, tf.complex128))
-    mag = tf.math.sqrt(tf.math.real(spec * tf.math.conj(spec)))
-    channel_2 = tf.cast(tf.math.real(tf.signal.ifft(spec / tf.cast(mag, tf.complex128))), tf.float32) * tf.math.sqrt(
-        signal.shape[1] / 2)
-    return tf.stack([channel_0, channel_1, channel_2], axis=0)
+    return tf.cast(tf.math.real(tf.signal.ifft(spec / tf.cast(mag, tf.complex128))), tf.float32) * tf.math.sqrt(
+        signal.shape[-1] / 2)
 
 
 def butter_bandpass(lowcut, highcut, fs, order=8):
@@ -198,10 +169,7 @@ def _preprocess_image_function(single_photo):
         tf_bp_filter(data)
     if CFG.whiten:
         data = whiten(data)
-    channel_r = cwt(tf.expand_dims(data[0, :], axis=0), flow=CFG.fmin, fhigh=CFG.fmax, batch_size=1)
-    channel_g = cwt(tf.expand_dims(data[1, :], axis=0), flow=CFG.fmin, fhigh=CFG.fmax, batch_size=1)
-    channel_b = cwt(tf.expand_dims(data[2, :], axis=0), flow=CFG.fmin, fhigh=CFG.fmax, batch_size=1)
-    image = tf.stack([channel_r, channel_g, channel_b], axis=-1)
+    image = cwt(data, flow=CFG.fmin, fhigh=CFG.fmax, batch_size=data.shape[0])
     # image = tf.image.per_image_standardization(image)
     single_photo['data'] = image
     return single_photo['data'], tf.cast(single_photo['label'], tf.float32), single_photo['id']
@@ -237,11 +205,11 @@ def create_train_dataset(train_idx):
                     .filter(create_idx_filter(train_idx))
                     .map(_remove_idx))
     dataset = (parsed_train
-               .shuffle(10240)
                .with_options(opt)
                .repeat()
                .map(_preprocess_image_function, num_parallel_calls=AUTOTUNE))
     return dataset
+
 
 idx_train_tf = tf.cast(tf.constant(splits[0][0]), tf.int64)
 dataset = create_train_dataset(idx_train_tf)
@@ -255,4 +223,3 @@ for image, label, sample_id in dataset.take(1):
     print(label.numpy())
     print(sample_id.numpy())
 plt.show()
-
