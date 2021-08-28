@@ -160,7 +160,7 @@ def cwt(input, flow=20.0, fhigh=512.0, batch_size=None):
     x = tf.concat([tf.reverse(input[:, :, 0:padvalue], axis=[2]), input,
                    tf.reverse(input[:, :, -padvalue:], axis=[2])], 2)
     x = tf.signal.fft(tf.cast(x, tf.complex64))
-    cwtcfs = tf.signal.ifft(tf.tile(tf.expand_dims(x, 2), [1, 1, num_scales, 1]) * wft)
+    cwtcfs = tf.signal.ifft(tf.expand_dims(x, 2) * wft)
     x = tf.math.log(tf.math.abs(cwtcfs[:, :, :, padvalue:padvalue + input.shape[-1]]))
     x = tf.transpose(x, (0, 2, 3, 1))
     return x
