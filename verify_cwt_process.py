@@ -15,6 +15,8 @@ for gpu in gpus:
 
 
 class CFG:
+    # *******************************************************************************************
+    # CWT Parameters
     sample_rate = 2048.0
     fmin = 20.0
     fmax = 512.0
@@ -23,13 +25,20 @@ class CFG:
     bandpass = True
     trainable = False
     ts = 0.1
-    len = 4096
-    tukey = tf.cast(scipy.signal.windows.get_window(('tukey', ts), len), tf.float32)
+    length = 4096
+    tukey = tf.cast(scipy.signal.windows.get_window(('tukey', ts), length), tf.float32)
     use_tukey = True
+    # *******************************************************************************************
+    # tfrecords folder location
     tfrecords_fold_prefix = "./"
+    # *******************************************************************************************
+    # Dataset Parameters
     HEIGHT = 256
     WIDTH = 256
     SEED = 2022
+    batch_size = 16
+    # *******************************************************************************************
+    # split folder location
     split_data_location = "./data_local"
 
 
@@ -68,10 +77,11 @@ def cwt_pre(shape, nv=16, sr=2048.0, flow=20.0, fhigh=512.0, trainable=False):
         _wft[jj,] = 2 * np.exp(expnt) * (omega > 0)
     wft = tf.Variable(_wft, trainable=trainable)
     num_scales = scales.shape[-1]
+    wft = tf.cast(wft, tf.complex64)
     return wft, padvalue, num_scales
 
 
-wft, padvalue, num_scales = cwt_pre((1, CFG.len),
+wft, padvalue, num_scales = cwt_pre((3, CFG.length),
                                     nv=CFG.nv,
                                     sr=CFG.sample_rate,
                                     flow=CFG.fmin,
@@ -81,26 +91,27 @@ wft, padvalue, num_scales = cwt_pre((1, CFG.len),
 
 @tf.function
 # Change to function
-def cwt(input, flow=20.0, fhigh=512.0, batch_size=None):
-    assert fhigh > flow, 'fhigh parameters must be > flow!'
-    assert batch_size is not None, 'batch size must be set!'
-    assert len(input.shape) == 2, 'Input dimension must be 2! Dimension is {}'.format(len(input.shape))
-    x = tf.concat([tf.reverse(input[:, 0:padvalue], axis=[1]), input,
-                   tf.reverse(input[:, -padvalue:], axis=[1])], 1)
-    f = tf.signal.fft(tf.cast(x, tf.complex64))
-    cwtcfs = tf.signal.ifft(
-        tf.transpose(tf.tile(tf.expand_dims(f, 0), [num_scales, 1, 1]), [1, 0, 2]) * tf.cast(wft, tf.complex64))
-    logcwt = tf.math.log(tf.math.abs(cwtcfs[:, :, padvalue:padvalue + input.shape[-1]]))
-    return MinMaxScaler(tf.image.resize(tf.transpose(logcwt, (1, 2, 0)), (CFG.HEIGHT, CFG.WIDTH)), 0.0, 1.0)
+def cwt(input):
+    x = tf.concat([tf.reverse(input[:, :, 0:padvalue], axis=[2]), input,
+                   tf.reverse(input[:, :, -padvalue:], axis=[2])], 2)
+    x = tf.signal.fft(tf.cast(x, tf.complex64))
+    cwtcfs = tf.signal.ifft(tf.tile(tf.expand_dims(x, 2), [1, 1, num_scales, 1]) * wft)
+    x = tf.math.log(tf.math.abs(cwtcfs[:, :, :, padvalue:padvalue + input.shape[-1]]))
+    x = tf.transpose(x, (0, 2, 3, 1))
+    return x
+
+
+@tf.function
+def _cwt(image, label, id):
+    return MinMaxScaler(tf.image.resize(cwt(image), (CFG.HEIGHT, CFG.WIDTH)), 0.0, 1.0), label, id
 
 
 @tf.function
 def MinMaxScaler(data, lower, upper):
-    assert upper > lower, 'fhigh parameters must be > flow!'
     lower = tf.cast(lower, tf.float32)
     upper = tf.cast(upper, tf.float32)
-    min_val = tf.math.reduce_min(data)
-    max_val = tf.math.reduce_max(data)
+    min_val = tf.reshape(tf.reduce_min(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
+    max_val = tf.reshape(tf.reduce_max(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
     std_data = tf.divide(tf.subtract(data, min_val), tf.subtract(max_val, min_val))
     return tf.add(tf.multiply(std_data, tf.subtract(upper, lower)), lower)
 
@@ -137,7 +148,6 @@ def tukey_window(data):
     return data * window
 
 
-# wrap numpy-based function for use with TF
 @tf.function
 def tf_bp_filter(input):
     input = tf.cast(input, tf.float64)
@@ -157,33 +167,38 @@ image_feature_description = {
 }
 
 
+@tf.function
 def _parse_raw_function(sample):
     # Parse the input tf.Example proto using the dictionary above.
     return tf.io.parse_single_example(sample, image_feature_description)
 
 
-def _preprocess_image_function(single_photo):
-    data = tf.io.decode_raw(single_photo['data'], tf.float32)
+@tf.function
+def _decode_raw(sample):
+    data = tf.io.decode_raw(sample['data'], tf.float32)
     data = tf.reshape(data, (3, 4096))
     if CFG.bandpass:
         tf_bp_filter(data)
     if CFG.whiten:
         data = whiten(data)
-    image = cwt(data, flow=CFG.fmin, fhigh=CFG.fmax, batch_size=data.shape[0])
+    return data, tf.cast(sample['label'], tf.float32), sample['id']
+
+
+@tf.function
+def _aug(image, label, id):
     # image = tf.image.per_image_standardization(image)
-    single_photo['data'] = image
-    return single_photo['data'], tf.cast(single_photo['label'], tf.float32), single_photo['id']
+    return image, label, id
 
 
 def create_idx_filter(indice):
-    def _filt(i, single_photo):
+    def _filt(i, sample):
         return tf.reduce_any(indice == i)
 
     return _filt
 
 
-def _remove_idx(i, single_photo):
-    return single_photo
+def _remove_idx(i, sample):
+    return sample
 
 
 indices = []
@@ -207,7 +222,11 @@ def create_train_dataset(train_idx):
     dataset = (parsed_train
                .with_options(opt)
                .repeat()
-               .map(_preprocess_image_function, num_parallel_calls=AUTOTUNE))
+               .map(_decode_raw, num_parallel_calls=AUTOTUNE)
+               .batch(CFG.batch_size, num_parallel_calls=AUTOTUNE)
+               .map(_cwt, num_parallel_calls=AUTOTUNE)
+               .unbatch()
+               .map(_aug, num_parallel_calls=AUTOTUNE))
     return dataset
 
 

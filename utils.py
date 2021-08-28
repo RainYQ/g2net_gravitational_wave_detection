@@ -9,4 +9,4 @@ def plot_result_distribution(path):
     plt.show()
 
 
-plot_result_distribution("./submission_ensemble.csv")
+plot_result_distribution("./submission_with_prob_0.csv")
