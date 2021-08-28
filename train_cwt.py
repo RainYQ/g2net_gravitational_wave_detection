@@ -63,7 +63,7 @@ class CFG:
     tensorboard = False
     # *******************************************************************************************
     # Set to True for first Run
-    generate_split_data = False
+    generate_split_data = True
     # *******************************************************************************************
     # Test Code
     use_small_dataset = False
@@ -122,7 +122,7 @@ def cwt(input):
     x = tf.concat([tf.reverse(input[:, :, 0:padvalue], axis=[2]), input,
                    tf.reverse(input[:, :, -padvalue:], axis=[2])], 2)
     x = tf.signal.fft(tf.cast(x, tf.complex64))
-    cwtcfs = tf.signal.ifft(tf.tile(tf.expand_dims(x, 2), [1, 1, num_scales, 1]) * wft)
+    cwtcfs = tf.signal.ifft(tf.expand_dims(x, 2) * wft)
     x = tf.math.log(tf.math.abs(cwtcfs[:, :, :, padvalue:padvalue + input.shape[-1]]))
     x = tf.transpose(x, (0, 2, 3, 1))
     return x
@@ -234,6 +234,10 @@ def _decode_raw_val_extra(sample):
 @tf.function
 def _aug(image, label):
     image = tf.image.per_image_standardization(image)
+    image = tfa.image.random_cutout(image, [20, 20])
+    image = tfa.image.random_cutout(image, [20, 20])
+    image = tfa.image.random_cutout(image, [20, 20])
+    image = tfa.image.random_cutout(image, [20, 20])
     return image, label
 
 
@@ -331,9 +335,7 @@ def create_train_dataset(batchsize, train_idx):
                .map(_decode_raw, num_parallel_calls=AUTOTUNE)
                .batch(batchsize, num_parallel_calls=AUTOTUNE)
                .map(_cwt, num_parallel_calls=AUTOTUNE)
-               .unbatch()
-               .map(_aug, num_parallel_calls=AUTOTUNE)
-               .batch(batchsize, num_parallel_calls=AUTOTUNE))
+               .map(_aug, num_parallel_calls=AUTOTUNE))
     if CFG.mixup:
         dataset = (dataset.map(_mixup, num_parallel_calls=AUTOTUNE)
                    .prefetch(AUTOTUNE))
@@ -352,9 +354,7 @@ def create_val_dataset(batchsize, val_idx):
                .map(_decode_raw, num_parallel_calls=AUTOTUNE)
                .batch(batchsize, num_parallel_calls=AUTOTUNE)
                .map(_cwt, num_parallel_calls=AUTOTUNE)
-               .unbatch()
-               .map(_aug_val, num_parallel_calls=AUTOTUNE)
-               .batch(batchsize * 2, num_parallel_calls=AUTOTUNE))
+               .map(_aug_val, num_parallel_calls=AUTOTUNE))
     return dataset
 
 
@@ -368,9 +368,7 @@ def create_val_extra_dataset(batchsize, val_idx):
                .map(_decode_raw_val_extra, num_parallel_calls=AUTOTUNE)
                .batch(batchsize, num_parallel_calls=AUTOTUNE)
                .map(_cwt_val_extra, num_parallel_calls=AUTOTUNE)
-               .unbatch()
-               .map(_aug_val_extra, num_parallel_calls=AUTOTUNE)
-               .batch(batchsize * 2, num_parallel_calls=AUTOTUNE))
+               .map(_aug_val_extra, num_parallel_calls=AUTOTUNE))
     return dataset
 
 
@@ -484,8 +482,8 @@ def train(splits, split_id):
                         )
 
     plot_history(history, 'history_%d.png' % split_id)
-    with open("history.data", 'wb') as file:
-        pickle.dump(history, file)
+    with open("history_%d.data" % split_id, 'wb') as file:
+        pickle.dump(history.history, file)
 
 for i in range(CFG.k_fold):
     train(splits, i)

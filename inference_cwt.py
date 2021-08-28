@@ -42,7 +42,7 @@ class CFG:
     use_tta = False
     TTA_STEP = 4
     # *******************************************************************************************
-    # OOF Fold Inference Result Folder
+    # OOF Inference Result Folder
     result_folder = "./"
 
 
@@ -115,7 +115,7 @@ def cwt(input):
     x = tf.concat([tf.reverse(input[:, :, 0:padvalue], axis=[2]), input,
                    tf.reverse(input[:, :, -padvalue:], axis=[2])], 2)
     x = tf.signal.fft(tf.cast(x, tf.complex64))
-    cwtcfs = tf.signal.ifft(tf.tile(tf.expand_dims(x, 2), [1, 1, num_scales, 1]) * wft)
+    cwtcfs = tf.signal.ifft(tf.expand_dims(x, 2) * wft)
     x = tf.math.log(tf.math.abs(cwtcfs[:, :, :, padvalue:padvalue + input.shape[-1]]))
     x = tf.transpose(x, (0, 2, 3, 1))
     return x
@@ -217,9 +217,7 @@ def create_test_dataset():
                .map(_decode_raw_test, num_parallel_calls=AUTOTUNE)
                .batch(CFG.batch_size, num_parallel_calls=AUTOTUNE)
                .map(_cwt_test, num_parallel_calls=AUTOTUNE)
-               .unbatch()
                .map(_aug_test, num_parallel_calls=AUTOTUNE)
-               .batch(CFG.batch_size, num_parallel_calls=AUTOTUNE)
                .prefetch(AUTOTUNE))
     return dataset
 

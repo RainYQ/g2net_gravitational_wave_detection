@@ -8,6 +8,7 @@ import scipy
 from scipy import signal
 from scipy.signal import butter, sosfiltfilt
 from matplotlib import pyplot as plt
+import tensorflow_addons as tfa
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 for gpu in gpus:
@@ -37,6 +38,7 @@ class CFG:
     WIDTH = 256
     SEED = 2022
     batch_size = 16
+    check_aug = False
     # *******************************************************************************************
     # split folder location
     split_data_location = "./data_local"
@@ -95,7 +97,7 @@ def cwt(input):
     x = tf.concat([tf.reverse(input[:, :, 0:padvalue], axis=[2]), input,
                    tf.reverse(input[:, :, -padvalue:], axis=[2])], 2)
     x = tf.signal.fft(tf.cast(x, tf.complex64))
-    cwtcfs = tf.signal.ifft(tf.tile(tf.expand_dims(x, 2), [1, 1, num_scales, 1]) * wft)
+    cwtcfs = tf.signal.ifft(tf.expand_dims(x, 2) * wft)
     x = tf.math.log(tf.math.abs(cwtcfs[:, :, :, padvalue:padvalue + input.shape[-1]]))
     x = tf.transpose(x, (0, 2, 3, 1))
     return x
@@ -186,7 +188,12 @@ def _decode_raw(sample):
 
 @tf.function
 def _aug(image, label, id):
-    # image = tf.image.per_image_standardization(image)
+    if CFG.check_aug:
+        image = tf.image.per_image_standardization(image)
+        image = tfa.image.random_cutout(image, [20, 20])
+        image = tfa.image.random_cutout(image, [20, 20])
+        image = tfa.image.random_cutout(image, [20, 20])
+        image = tfa.image.random_cutout(image, [20, 20])
     return image, label, id
 
 
@@ -225,14 +232,14 @@ def create_train_dataset(train_idx):
                .map(_decode_raw, num_parallel_calls=AUTOTUNE)
                .batch(CFG.batch_size, num_parallel_calls=AUTOTUNE)
                .map(_cwt, num_parallel_calls=AUTOTUNE)
-               .unbatch()
-               .map(_aug, num_parallel_calls=AUTOTUNE))
+               .map(_aug, num_parallel_calls=AUTOTUNE)
+               .unbatch())
     return dataset
 
 
 idx_train_tf = tf.cast(tf.constant(splits[0][0]), tf.int64)
 dataset = create_train_dataset(idx_train_tf)
-for image, label, sample_id in dataset.take(1):
+for image, label, sample_id in dataset.take(2):
     plt.figure()
     plt.pcolormesh(np.flip(image.numpy()[:, :, 0], 0))
     plt.figure()
