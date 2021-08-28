@@ -18,11 +18,9 @@ import os
 
 
 class CFG:
-    wave_data_prefix = "F:/"
-    sample_id = '129cf61472'
-    mode = 'train'
+    # *******************************************************************************************
+    # CWT Parameters
     sample_rate = 2048.0
-    channel = 0
     fmin = 20.0
     fmax = 512.0
     nv = 32
@@ -33,8 +31,18 @@ class CFG:
     len = 4096
     tukey = tf.cast(scipy.signal.windows.get_window(('tukey', ts), len), tf.float32)
     use_tukey = True
+    # *******************************************************************************************
+    # Sample Parameters
+    wave_data_prefix = "F:/"
+    sample_id_group = ['01d162f247', '333a674c18']
+    mode = 'train'
+    # *******************************************************************************************
+    # Resize Parameters
     HEIGHT = 256
     WIDTH = 256
+    # *******************************************************************************************
+    # Show Parameters
+    show_error_plot = False
 
 
 def get_file_path(image_id, mode):
@@ -131,30 +139,39 @@ def cwt_pre(shape, nv=16, sr=2048.0, flow=20.0, fhigh=512.0, trainable=False):
     # parameters we want to use during call():
     wft = tf.Variable(_wft, trainable=trainable)  # yes, the wavelets can be trainable if desired
     num_scales = scales.shape[-1]
+    wft = tf.cast(wft, tf.complex64)
     return wft, padvalue, num_scales
 
 
+wft, padvalue, num_scales = cwt_pre((1, CFG.len),
+                                    nv=CFG.nv,
+                                    sr=CFG.sample_rate,
+                                    flow=CFG.fmin,
+                                    fhigh=CFG.fmax,
+                                    trainable=CFG.trainable)
+
+
 # Change to function
-def cwt(input, nv=16, sr=2048.0, flow=20.0, fhigh=512.0, batch_size=None, trainable=False):
+def cwt(input, flow=20.0, fhigh=512.0, batch_size=None):
     assert fhigh > flow, 'fhigh parameters must be > flow!'
     assert batch_size is not None, 'batch size must be set!'
-    assert len(input.shape) == 2, 'Input dimension must be 2! Dimension is {}'.format(len(input.shape))
-    wft, padvalue, num_scales = cwt_pre(input.shape, nv, sr, flow, fhigh, trainable)
-    x = tf.concat([tf.reverse(input[:, 0:padvalue], axis=[1]), input,
-                   tf.reverse(input[:, -padvalue:], axis=[1])], 1)
-    f = tf.signal.fft(tf.cast(x, tf.complex64))
-    cwtcfs = tf.signal.ifft(
-        tf.transpose(tf.tile(tf.expand_dims(f, 0), [num_scales, 1, 1]), [1, 0, 2]) * tf.cast(wft, tf.complex64))
-    logcwt = tf.math.log(tf.math.abs(cwtcfs[:, :, padvalue:padvalue + input.shape[-1]]))
-    return logcwt
+    assert len(input.shape) == 3, 'Input dimension must be 3! Dimension is {}'.format(len(input.shape))
+
+    x = tf.concat([tf.reverse(input[:, :, 0:padvalue], axis=[2]), input,
+                   tf.reverse(input[:, :, -padvalue:], axis=[2])], 2)
+    x = tf.signal.fft(tf.cast(x, tf.complex64))
+    cwtcfs = tf.signal.ifft(tf.tile(tf.expand_dims(x, 2), [1, 1, num_scales, 1]) * wft)
+    x = tf.math.log(tf.math.abs(cwtcfs[:, :, :, padvalue:padvalue + input.shape[-1]]))
+    x = tf.transpose(x, (0, 2, 3, 1))
+    return x
 
 
 def MinMaxScaler(data, lower, upper):
-    assert upper > lower, 'fhigh parameters must be > flow!'
+    assert upper > lower, 'upper parameters must be > lower!'
     lower = tf.cast(lower, tf.float32)
     upper = tf.cast(upper, tf.float32)
-    min_val = tf.math.reduce_min(data)
-    max_val = tf.math.reduce_max(data)
+    min_val = tf.reshape(tf.reduce_min(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
+    max_val = tf.reshape(tf.reduce_max(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
     std_data = tf.divide(tf.subtract(data, min_val), tf.subtract(max_val, min_val))
     return tf.add(tf.multiply(std_data, tf.subtract(upper, lower)), lower)
 
@@ -196,7 +213,7 @@ def tukey_window(data):
     return data * window
 
 
-d_raw = np.load(get_file_path(CFG.sample_id, CFG.mode)).astype(np.float64).astype(np.float64)
+d_raw = np.load(get_file_path(CFG.sample_id_group[0], CFG.mode)).astype(np.float64).astype(np.float64)
 # Min Max Scaler -1 1
 d = (d_raw - np.min(d_raw)) / (np.max(d_raw) - np.min(d_raw))
 d = (d - 0.5) * 2
@@ -206,16 +223,17 @@ plt.figure()
 if CFG.bandpass:
     d = butter_bandpass_filter(d)
 
-d_torch = whiten_torch(d)
-d_tf = whiten(d)
-for i in range(d_torch.shape[0]):
-    plt.figure()
-    plt.plot(d_torch[i, :], label='torch')
-    plt.plot(d_tf.numpy()[i, :], label='tensorflow')
-    plt.plot(d_torch[i, :] - d_tf.numpy()[i, :], label='difference')
-    plt.legend()
-    plt.title('Channel ' + str(i))
-plt.show()
+if CFG.show_error_plot:
+    d_torch = whiten_torch(d)
+    d_tf = whiten(d)
+    for i in range(d_torch.shape[0]):
+        plt.figure()
+        plt.plot(d_torch[i, :], label='torch')
+        plt.plot(d_tf.numpy()[i, :], label='tensorflow')
+        plt.plot(d_torch[i, :] - d_tf.numpy()[i, :], label='difference')
+        plt.legend()
+        plt.title('Channel ' + str(i))
+    plt.show()
 
 if CFG.whiten:
     d = whiten(d)
@@ -223,30 +241,64 @@ if CFG.whiten:
 d = tf.cast(d, tf.float32)
 
 start = time.time()
-y = Wavelet1D(CFG.nv, sr=CFG.sample_rate, flow=CFG.fmin, fhigh=CFG.fmax, batch_size=d.shape[0], trainable=CFG.trainable)(d)
+y = Wavelet1D(CFG.nv, sr=CFG.sample_rate, flow=CFG.fmin, fhigh=CFG.fmax, batch_size=d.shape[0],
+              trainable=CFG.trainable)(d)
 end = time.time()
 print('Time cost:', end - start)
 y = tf.transpose(y, (1, 2, 0))
 y = tf.image.resize(y, (CFG.HEIGHT, CFG.WIDTH))
+y = tf.expand_dims(y, 0)
 y = MinMaxScaler(y, 0, 1)
 # flip for pcolormesh
-y = np.flip(y.numpy()[:, :, 0], 0)
+y = np.flip(y.numpy()[0, :, :, 0], 0)
 data_origin = y
 plt.pcolormesh(y)
 plt.show()
 
+data = []
+for sample_id in CFG.sample_id_group:
+    d_raw = np.load(get_file_path(sample_id, CFG.mode)).astype(np.float64).astype(np.float64)
+    # Min Max Scaler -1 1
+    d = (d_raw - np.min(d_raw)) / (np.max(d_raw) - np.min(d_raw))
+    d = (d - 0.5) * 2
+    d = d.astype(np.float32)
+    plt.figure()
+    # bandpass filter
+    if CFG.bandpass:
+        d = butter_bandpass_filter(d)
+
+    if CFG.show_error_plot:
+        d_torch = whiten_torch(d)
+        d_tf = whiten(d)
+        for i in range(d_torch.shape[0]):
+            plt.figure()
+            plt.plot(d_torch[i, :], label='torch')
+            plt.plot(d_tf.numpy()[i, :], label='tensorflow')
+            plt.plot(d_torch[i, :] - d_tf.numpy()[i, :], label='difference')
+            plt.legend()
+            plt.title('Channel ' + str(i))
+        plt.show()
+
+    if CFG.whiten:
+        d = whiten(d)
+
+    d = tf.cast(d, tf.float32)
+    data.append(d)
+
+d = tf.stack(data, axis=0)
 plt.figure()
 start = time.time()
-y = cwt(d, nv=CFG.nv, sr=CFG.sample_rate, flow=CFG.fmin,
-        fhigh=CFG.fmax, batch_size=1, trainable=CFG.trainable)
+y = cwt(d, flow=CFG.fmin, fhigh=CFG.fmax, batch_size=3)
 end = time.time()
 print('Time cost:', end - start)
-y = tf.transpose(y, (1, 2, 0))
 y = tf.image.resize(y, (CFG.HEIGHT, CFG.WIDTH))
 y = MinMaxScaler(y, 0, 1)
 # flip for pcolormesh
-y = np.flip(y.numpy()[:, :, 0], 0)
-plt.pcolormesh(y)
+image = np.flip(y.numpy()[0, :, :, 0], 0)
+plt.pcolormesh(image)
 plt.show()
-data_optimize = y
+data_optimize = image
 print(np.max(data_origin - data_optimize))
+image = np.flip(y.numpy()[1, :, :, 0], 0)
+plt.pcolormesh(image)
+plt.show()
