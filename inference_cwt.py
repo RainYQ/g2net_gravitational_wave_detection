@@ -9,6 +9,7 @@ import math
 import scipy
 from scipy import signal
 from scipy.signal import butter, sosfiltfilt
+from GroupNormalization import GroupNormalization
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 for gpu in gpus:
@@ -41,6 +42,7 @@ class CFG:
     SEED = 2022
     use_tta = False
     TTA_STEP = 4
+    from_local = True
     # *******************************************************************************************
     # OOF Inference Result Folder
     result_folder = "./"
@@ -229,15 +231,24 @@ def create_model():
         weights=None,
         pooling='avg'
     )
-
-    model = tf.keras.Sequential([
-        backbone,
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Dropout(0.5),
-        tf.keras.layers.Dense(128, kernel_initializer=tf.keras.initializers.he_normal(), activation='relu'),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Dropout(0.5),
-        tf.keras.layers.Dense(1, kernel_initializer=tf.keras.initializers.he_normal(), activation='sigmoid')])
+    if not CFG.from_local:
+        model = tf.keras.Sequential([
+            backbone,
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Dropout(0.5),
+            tf.keras.layers.Dense(128, kernel_initializer=tf.keras.initializers.he_normal(), activation='relu'),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Dropout(0.5),
+            tf.keras.layers.Dense(1, kernel_initializer=tf.keras.initializers.he_normal(), activation='sigmoid')])
+    else:
+        model = tf.keras.Sequential([
+            backbone,
+            GroupNormalization(group=32),
+            tf.keras.layers.Dropout(0.5),
+            tf.keras.layers.Dense(128, kernel_initializer=tf.keras.initializers.he_normal(), activation='relu'),
+            GroupNormalization(group=32),
+            tf.keras.layers.Dropout(0.5),
+            tf.keras.layers.Dense(1, kernel_initializer=tf.keras.initializers.he_normal(), activation='sigmoid')])
     return model
 
 
