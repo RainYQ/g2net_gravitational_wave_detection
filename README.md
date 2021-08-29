@@ -5,7 +5,7 @@
 3. Download datasets from [G2Net Gravitational Wave Detection | Kaggle](https://www.kaggle.com/c/g2net-gravitational-wave-detection/data)
 4. Unzip g2net-gravitational-wave-detection.zip
 5. **In PyCharm, Exclude train & test File Folder (!Warning)**
-## STEP1: Constant Wave Transform
+## STEP1: Continuous Wavelet Transform
 * kaggle dataset
   * Raw Data (Apply MinMaxScaler)
     * https://www.kaggle.com/rainyq/g2netrawdata-train
