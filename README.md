@@ -1,39 +1,25 @@
-**# g2net_gravitational_wave_detection
+# g2net_gravitational_wave_detection
 ## Prepare Step
 1. Use [GitHub Desktop | Simple collaboration from your desktop](https://desktop.github.com/)
 2. Clone https://github.com/RainYQ/g2net_gravitational_wave_detection.git
 3. Download datasets from [G2Net Gravitational Wave Detection | Kaggle](https://www.kaggle.com/c/g2net-gravitational-wave-detection/data)
 4. Unzip g2net-gravitational-wave-detection.zip
 5. **In PyCharm, Exclude train & test File Folder (!Warning)**
-6. ~~Use 7-zip to unzip tfrecords.00*~~
-## ~~STEP1: Transform to Spectrogram~~
-* ~~Mel-Spectrogram Parameters~~
-    * ~~sample_rate = 2048 Hz (fixed)~~
-    * ~~n_mels = 128~~
-    * ~~n_fft = 2048~~
-    * ~~hop_length = 512 (try 128/64)~~
-    * ~~mel_power = 2 (fixed)~~
-    * ~~f_min = 20 Hz~~
-    * ~~f_max = 1024 Hz~~
-## STEP1: Constant Q Transform
-* CQT Transform code <br/>
-  ```python
-  ts = TimeSeries(strain_seg, sample_rate=2048)
-  ts = ts.whiten(window=("tukey", 0.15))
-  cqt = ts.q_transform(qrange=(10, 10), frange=(20, 512), logf=True, whiten=False)
-  # Use the same plot pipeline
-  power = cqt.__array__()
-  power = np.transpose(power)
-  time = cqt.xindex.__array__()
-  freq = cqt.yindex.__array__()
-  plt.pcolormesh(time, freq, power, vmax=15, vmin=0)
-  plt.yscale('log')
-  ```
-* Use ```cv2.resize``` resize to 512x512
+## STEP1: Constant Wave Transform
 * kaggle dataset
-  * https://www.kaggle.com/rainyq/cqt-dataset-encode-jpeg
-  * https://www.kaggle.com/rainyq/cqt-dataset-encode-jpeg-test
-  * https://www.kaggle.com/rainyq/split-data
+  * Raw Data (Apply MinMaxScaler)
+    * https://www.kaggle.com/rainyq/g2netrawdata-train
+    * https://www.kaggle.com/rainyq/g2netrawdata-test
+    * https://www.kaggle.com/rainyq/split-data
+  * CQT Dataset (Apply Bandpass filter & whiten & MinMaxScaler & Resize to 512 x 512)
+    * https://www.kaggle.com/rainyq/constant-q-transform-dataset-train
+    * https://www.kaggle.com/rainyq/constant-q-transform-dataset-test
+  * CQT Dataset (Apply Highpass filter & VminVmaxTransform & Resize to 512 x 512)
+    * https://www.kaggle.com/rainyq/cqt-dataset-encode-jpeg-no-whiten
+    * https://www.kaggle.com/rainyq/cqt-dataset-encode-png-test-no-whiten
+  * CQT Dataset (Apply Highpass filter & whiten & VminVmaxTransform & Resize to 512 x 512)
+    * https://www.kaggle.com/rainyq/cqt-dataset-encode-jpeg
+    * https://www.kaggle.com/rainyq/cqt-dataset-encode-jpeg-test
 ## STEP2: Make TFRecords
 * train <br/>
   ```python
@@ -51,51 +37,16 @@
               })
   ```
 ## STEP3: Make tf.datasets
-***
-* parse samples from tfrecords
-  ```python
-  def _parse_image_function(single_photo):
-      # Parse the input tf.Example proto using the dictionary above.
-      return tf.io.parse_single_example(single_photo, image_feature_description)
-  ```
-***
-* decode image data
-* convert image datatype to ```tf.float32```
-* resize
-* image standardization
-* random jpeg quality
-* gaussian noise
-* random contrast or random hue
-* random brightness
-***
-* get one hot label
-* unbatch image data & label
-***
-  ```python
-  def _preprocess_image_function(single_photo):
-    image = tf.image.decode_jpeg(single_photo['data'], channels=3)
-    image = tf.image.convert_image_dtype(image, tf.float32)
-    if CFG.RAW_WIDTH != CFG.WIDTH or CFG.RAW_HEIGHT != CFG.HEIGHT:
-        image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
-    image = tf.image.per_image_standardization(image)
-    image = tf.image.random_jpeg_quality(image, 80, 100)
-    # 高斯噪声的标准差为 0.3
-    gau = tf.keras.layers.GaussianNoise(0.3)
-    # 以 50％ 的概率为图像添加高斯噪声
-    image = tf.cond(tf.random.uniform([]) < 0.5, lambda: gau(image), lambda: image)
-    image = tf.image.random_contrast(image, lower=0.7, upper=1.3)
-    image = tf.cond(tf.random.uniform([]) < 0.5,
-                    lambda: tf.image.random_saturation(image, lower=0.7, upper=1.3),
-                    lambda: tf.image.random_hue(image, max_delta=0.3))
-    # brightness随机调整
-    image = tf.image.random_brightness(image, 0.3)
-    single_photo['data'] = image
-    return single_photo['data'], tf.cast(single_photo['label'], tf.float32)
-  ```
-***
+* decode Raw signal data
+* bandpass filter & whiten **TPU cannot apply bandpass filter**
+* batch
+* CWT & MinMaxScaler & Resize
+* Image Augmentation
+* **TPU Can only calculate CWT at batch_size <= 128**
+
 ## STEP4: Train
-* On RTX2060, batch_size in train: 16
-* On RTX2080Ti, batch_size in train: 32/64(oom)
+* On RTX2060, batch_size: 16, time: ~20500 s/epoch
+* On RTX2080Ti, batch_size: 32/64(oom), time: Unknown
 * 5-Fold
 * Train Dataset
   * 448000 images
@@ -127,32 +78,15 @@
                                warmup_proportion=0.1, min_lr=1e-5)
   ```
 ## STEP5: Predict
-* Single Fold: LB 0.838
-* Single Fold TTA_STEP = 16: LB 0.838
-* Ensemble 2 Fold TTA_STEP = 16: LB 0.840
-* CV ~= LB
-* On RTX2060, batch_size in predict: 64/128(oom)
-* On RTX2060, 9.5 min / fold (TTA OFF) 12.5 min / fold (TTA ON)
+* CV ~= LB + 0.01
+* On RTX2060, batch_size: 64/128(oom)
+* On RTX2060, 147 min/fold (TTA OFF), Unknown min/fold (TTA ON)
+* On TPU, CWT batch_size: 128, batch_size: 1024
+* On TPU, 33 min/fold (TTA OFF), Unknown min/fold (TTA ON)
 * TTA
   * No Gaussian Noise
   * random_contrast set (1.0, 1.3)
   * No random_jpeg_quality
-  ```python
-  def _preprocess_image_test_function(single_photo):
-    image = tf.image.decode_png(single_photo['data'], channels=3)
-    image = tf.image.convert_image_dtype(image, tf.float32)
-    if CFG.RAW_WIDTH != CFG.WIDTH or CFG.RAW_HEIGHT != CFG.HEIGHT:
-        image = tf.image.resize(image, [CFG.HEIGHT, CFG.WIDTH])
-    image = tf.image.per_image_standardization(image)
-    image = tf.image.random_contrast(image, lower=1.0, upper=1.3)
-    image = tf.cond(tf.random.uniform([]) < 0.5,
-                    lambda: tf.image.random_saturation(image, lower=0.7, upper=1.3),
-                    lambda: tf.image.random_hue(image, max_delta=0.3))
-    # brightness随机调整
-    image = tf.image.random_brightness(image, 0.3)
-    single_photo['data'] = image
-    return single_photo['data'], single_photo['id']
-  ```
 
 ## STEP6: TODO
 ~~Sample~~ means finished <br/>
@@ -160,9 +94,8 @@
 * ~~Add mixup~~
 * **Test CosineAnnealing learning rate strategy**
 * Add label smooth
-* Add Cutout
+* ~~Add Cutout~~
 * Add Cutmix
-* Add Image Random Resize
 * ~~**Add image Augmentation : random_brightness ...**~~
 * ~~Use ROC_STAR_Loss https://github.com/iridiumblue/roc-star~~ 没啥好效果
 * ~~**Add TTA** we can use large TTA_STEP~~ 提升非常小
