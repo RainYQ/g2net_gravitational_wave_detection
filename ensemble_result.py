@@ -1,17 +1,21 @@
 import pandas as pd
 import glob
+import numpy as np
 
 
 class CFG:
-    Merge_Top_Solution = False
+    Merge_Top_Solution = True
 
 
 def ensemble(data):
-    temp = data[0].copy()
-    for j in range(len(data) - 1):
-        temp["target"] += data[j + 1]["target"]
-    temp["target"] = 1 / len(data) * temp["target"]
-    return temp
+    temp = np.zeros_like(data[0].sort_values(by='id')["target"].values)
+    for j in range(len(data)):
+        temp += 1 / len(data) * data[j].sort_values(by='id')["target"].values
+    ensemble_result = pd.DataFrame({
+        'id': data[0].sort_values(by='id')["id"].values,
+        'target': temp
+    })
+    return ensemble_result
 
 
 workdir = r"./model/results/"
