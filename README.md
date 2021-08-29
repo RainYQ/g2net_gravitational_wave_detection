@@ -42,7 +42,7 @@
 * batch
 * CWT & MinMaxScaler & Resize
 * Image Augmentation
-* **TPU Can only calculate CWT at batch_size <= 128**
+* **TPU Can only calculate CWT at batch_size < 128**
 
 ## STEP4: Train
 * On RTX2060, batch_size: 16, time: ~20500 s/epoch
@@ -79,14 +79,10 @@
   ```
 ## STEP5: Predict
 * CV ~= LB + 0.01
-* On RTX2060, batch_size: 64/128(oom)
+* On RTX2060, batch_size: 32
 * On RTX2060, 147 min/fold (TTA OFF), Unknown min/fold (TTA ON)
-* On TPU, CWT batch_size: 128, batch_size: 1024
+* On TPU, CWT batch_size: 64, batch_size: 512
 * On TPU, 33 min/fold (TTA OFF), Unknown min/fold (TTA ON)
-* TTA
-  * No Gaussian Noise
-  * random_contrast set (1.0, 1.3)
-  * No random_jpeg_quality
 
 ## STEP6: TODO
 ~~Sample~~ means finished <br/>
@@ -96,7 +92,7 @@
 * Add label smooth
 * ~~Add Cutout~~
 * Add Cutmix
-* ~~**Add image Augmentation : random_brightness ...**~~
+* **Add Image Augmentations : random_brightness ...**
 * ~~Use ROC_STAR_Loss https://github.com/iridiumblue/roc-star~~ 没啥好效果
 * ~~**Add TTA** we can use large TTA_STEP~~ 提升非常小
 * Test ResNet RegNet(PyTorch)
