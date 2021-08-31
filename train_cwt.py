@@ -47,7 +47,7 @@ class CFG:
     split_data_location = "./data_local"
     # *******************************************************************************************
     # Train Parameters
-    SEED = 2022
+    SEED = 1234
     HEIGHT = 256
     WIDTH = 256
     batch_size = 16
@@ -234,6 +234,16 @@ def _decode_raw_val_extra(sample):
 @tf.function
 def _aug(image, label):
     image = tf.image.per_image_standardization(image)
+    # 高斯噪声的标准差为 0.3
+    gau = tf.keras.layers.GaussianNoise(0.3)
+    # 以 50％ 的概率为图像添加高斯噪声
+    image = tf.cond(tf.random.uniform([]) < 0.5, lambda: gau(image), lambda: image)
+    image = tf.image.random_contrast(image, lower=0.7, upper=1.3)
+    image = tf.cond(tf.random.uniform([]) < 0.5,
+                    lambda: tf.image.random_saturation(image, lower=0.7, upper=1.3),
+                    lambda: tf.image.random_hue(image, max_delta=0.3))
+    # brightness随机调整
+    image = tf.image.random_brightness(image, 0.3)
     image = tfa.image.random_cutout(image, [20, 20])
     image = tfa.image.random_cutout(image, [20, 20])
     image = tfa.image.random_cutout(image, [20, 20])
@@ -469,8 +479,8 @@ def train(splits, split_id):
             tf.keras.callbacks.ModelCheckpoint(
                 filepath='./model/model_best_%d.h5' % split_id,
                 save_weights_only=True,
-                monitor='val_loss',
-                mode='min',
+                monitor='val_auc',
+                mode='max',
                 save_best_only=True)
         ]
     history = model.fit(dataset,

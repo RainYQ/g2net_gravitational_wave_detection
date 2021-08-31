@@ -5,8 +5,9 @@ import matplotlib.pyplot as plt
 
 def plot_result_distribution(path):
     data = pd.read_csv(path)
-    sns.distplot(data["target"])
+    plt.figure()
+    sns.histplot(data["target"], kde=True, stat='density')
     plt.show()
 
 
-plot_result_distribution("./submission_with_prob_0.csv")
+plot_result_distribution("./submission_ensemble.csv")

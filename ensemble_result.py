@@ -1,10 +1,12 @@
 import pandas as pd
 import glob
 import numpy as np
+import os
 
 
 class CFG:
     Merge_Top_Solution = True
+    result_folder = "./"
 
 
 def ensemble(data):
@@ -27,4 +29,6 @@ print(len(files), "csv files merged.")
 results = []
 for file in files:
     results.append(pd.read_csv(file))
-ensemble(results).to_csv("submission_ensemble.csv", index=False)
+save_path = os.path.join(CFG.result_folder, "submission_ensemble.csv")
+ensemble(results).to_csv(save_path, index=False)
+print("csv write to:", save_path)
