@@ -8,7 +8,6 @@ import efficientnet.tfkeras as efn
 import math
 import scipy
 from scipy import signal
-from scipy.signal import butter, sosfiltfilt
 from GroupNormalization import GroupNormalization
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -25,7 +24,7 @@ class CFG:
     fmax = 512.0
     nv = 32
     whiten = False
-    bandpass = False
+    bandpass = True
     trainable = False
     ts = 0.1
     length = 4096
@@ -49,7 +48,7 @@ class CFG:
 
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
-TEST_DATA_ROOT = "./test_tfrecords"
+TEST_DATA_ROOT = "./TFRecords/BandPass" if CFG.bandpass else "./TFRecords/No BandPass"
 test_img_lists = os.listdir(TEST_DATA_ROOT)
 
 
@@ -150,32 +149,10 @@ def whiten(signal):
         signal.shape[-1] / 2)
 
 
-def butter_bandpass(lowcut, highcut, fs, order=8):
-    nyq = 0.5 * fs
-    low = lowcut / nyq
-    high = highcut / nyq
-    sos = butter(order, [low, high], btype='band', output='sos')
-    return sos
-
-
-def butter_bandpass_filter(data):
-    filter_sos = butter_bandpass(CFG.fmin, CFG.fmax, CFG.sample_rate, order=8)
-    y = sosfiltfilt(filter_sos, data, padlen=1024)
-    return y
-
-
 @tf.function
 def tukey_window(data):
     window = CFG.tukey
     return data * window
-
-
-# wrap numpy-based function for use with TF
-@tf.function
-def tf_bp_filter(input):
-    input = tf.cast(input, tf.float64)
-    y = tf.numpy_function(butter_bandpass_filter, [input], tf.float64)
-    return y
 
 
 @tf.function
@@ -188,8 +165,6 @@ def _parse_raw_function(sample):
 def _decode_raw_test(sample):
     data = tf.io.decode_raw(sample['data'], tf.float32)
     data = tf.reshape(data, (3, 4096))
-    if CFG.bandpass:
-        tf_bp_filter(data)
     if CFG.whiten:
         data = whiten(data)
     return data, sample['id']
