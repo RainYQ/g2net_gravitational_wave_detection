@@ -6,7 +6,6 @@ import numpy as np
 import tensorflow as tf
 import scipy
 from scipy import signal
-from scipy.signal import butter, sosfiltfilt
 from matplotlib import pyplot as plt
 import tensorflow_addons as tfa
 
@@ -22,7 +21,7 @@ class CFG:
     fmin = 20.0
     fmax = 512.0
     nv = 32
-    whiten = True
+    whiten = False
     bandpass = True
     trainable = False
     ts = 0.1
@@ -31,7 +30,7 @@ class CFG:
     use_tukey = True
     # *******************************************************************************************
     # tfrecords folder location
-    tfrecords_fold_prefix = "./"
+    tfrecords_fold_prefix = "./TFRecords/BandPass" if bandpass else "./TFRecords/No BandPass"
     # *******************************************************************************************
     # Dataset Parameters
     HEIGHT = 256
@@ -130,31 +129,10 @@ def whiten(signal):
         signal.shape[-1] / 2)
 
 
-def butter_bandpass(lowcut, highcut, fs, order=8):
-    nyq = 0.5 * fs
-    low = lowcut / nyq
-    high = highcut / nyq
-    sos = butter(order, [low, high], btype='band', output='sos')
-    return sos
-
-
-def butter_bandpass_filter(data):
-    filter_sos = butter_bandpass(CFG.fmin, CFG.fmax, CFG.sample_rate, order=8)
-    y = sosfiltfilt(filter_sos, data, padlen=1024)
-    return y
-
-
 @tf.function
 def tukey_window(data):
     window = CFG.tukey
     return data * window
-
-
-@tf.function
-def tf_bp_filter(input):
-    input = tf.cast(input, tf.float64)
-    y = tf.numpy_function(butter_bandpass_filter, [input], tf.float64)
-    return y
 
 
 seed_everything(CFG.SEED)
@@ -179,8 +157,6 @@ def _parse_raw_function(sample):
 def _decode_raw(sample):
     data = tf.io.decode_raw(sample['data'], tf.float32)
     data = tf.reshape(data, (3, 4096))
-    if CFG.bandpass:
-        tf_bp_filter(data)
     if CFG.whiten:
         data = whiten(data)
     return data, tf.cast(sample['label'], tf.float32), sample['id']

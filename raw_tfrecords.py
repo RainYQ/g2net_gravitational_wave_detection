@@ -7,6 +7,8 @@ from tqdm.auto import tqdm
 import sys
 import math
 import joblib
+from scipy import signal
+from scipy.signal import butter, sosfiltfilt
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 for gpu in gpus:
@@ -16,8 +18,15 @@ for gpu in gpus:
 class CFG:
     Show = False
     NUMBER_IN_TFRECORD = 4096
-    wave_data_prefix = "F:/"
-    tfrecords_prefix = "./"
+    wave_data_prefix = "./"
+    tfrecords_prefix = "./TFRecords/BandPass/"
+    # *******************************************************************************************
+    # banpass filter Parameters
+    bandpass = True
+    fmin = 20
+    fmax = 500
+    sample_rate = 2048.0
+    use_tukey = True
 
 
 train = pd.read_csv('training_labels.csv')
@@ -36,12 +45,30 @@ def get_file_path(image_id, mode):
                         "{}/{}/{}/{}/{}.npy".format(mode, image_id[0], image_id[1], image_id[2], image_id))
 
 
+def butter_bandpass(lowcut, highcut, fs, order=8):
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    high = highcut / nyq
+    sos = butter(order, [low, high], btype='band', output='sos')
+    return sos
+
+
+def butter_bandpass_filter(data):
+    filter_sos = butter_bandpass(CFG.fmin, CFG.fmax, CFG.sample_rate, order=8)
+    y = sosfiltfilt(filter_sos, data, padlen=1024)
+    return y
+
+
 def create_dataset(data, i, mode):
     with tf.io.TFRecordWriter(
             os.path.join(
                 CFG.tfrecords_prefix + mode + '_tfrecords/' + mode + '_' + str(int(i)) + '.tfrecords')) as writer:
         for id, label in tqdm(zip(data["id"], data["target"])):
             data = np.load(get_file_path(id, mode)).astype(np.float64)
+            if CFG.use_tukey:
+                data *= signal.tukey(4096, 0.2)
+            for i in range(data.shape[0]):
+                data[i, :] = butter_bandpass_filter(data[i, :])
             for i in range(data.shape[0]):
                 # Min Max Scaler -1 1
                 data[i, :] = (data[i, :] - np.min(data[i, :])) / (np.max(data[i, :]) - np.min(data[i, :]))

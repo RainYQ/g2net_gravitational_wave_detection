@@ -16,7 +16,6 @@ import tensorflow_addons as tfa
 import tensorflow_probability as tfp
 import scipy
 from scipy import signal
-from scipy.signal import butter, sosfiltfilt
 
 # os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 
@@ -33,7 +32,7 @@ class CFG:
     fmax = 512.0
     nv = 32
     whiten = False
-    bandpass = False
+    bandpass = True
     trainable = False
     ts = 0.1
     length = 4096
@@ -41,7 +40,7 @@ class CFG:
     use_tukey = True
     # *******************************************************************************************
     # tfrecords folder location
-    tfrecords_fold_prefix = "./"
+    tfrecords_fold_prefix = "./TFRecords/BandPass" if bandpass else "./TFRecords/No BandPass"
     # *******************************************************************************************
     # split folder location
     split_data_location = "./data_local"
@@ -57,7 +56,7 @@ class CFG:
     k_fold = 5
     # *******************************************************************************************
     # Augmentation
-    mixup = False
+    mixup = True
     # *******************************************************************************************
     # Tensorboard
     tensorboard = False
@@ -160,32 +159,10 @@ def whiten(signal):
         signal.shape[-1] / 2)
 
 
-def butter_bandpass(lowcut, highcut, fs, order=8):
-    nyq = 0.5 * fs
-    low = lowcut / nyq
-    high = highcut / nyq
-    sos = butter(order, [low, high], btype='band', output='sos')
-    return sos
-
-
-def butter_bandpass_filter(data):
-    filter_sos = butter_bandpass(CFG.fmin, CFG.fmax, CFG.sample_rate, order=8)
-    y = sosfiltfilt(filter_sos, data, padlen=1024)
-    return y
-
-
 @tf.function
 def tukey_window(data):
     window = CFG.tukey
     return data * window
-
-
-# wrap numpy-based function for use with TF
-@tf.function
-def tf_bp_filter(input):
-    input = tf.cast(input, tf.float64)
-    y = tf.numpy_function(butter_bandpass_filter, [input], tf.float64)
-    return y
 
 
 seed_everything(CFG.SEED)
@@ -213,8 +190,6 @@ def _parse_raw_function(sample):
 def _decode_raw(sample):
     data = tf.io.decode_raw(sample['data'], tf.float32)
     data = tf.reshape(data, (3, 4096))
-    if CFG.bandpass:
-        tf_bp_filter(data)
     if CFG.whiten:
         data = whiten(data)
     return data, tf.cast(sample['label'], tf.float32)
@@ -224,8 +199,6 @@ def _decode_raw(sample):
 def _decode_raw_val_extra(sample):
     data = tf.io.decode_raw(sample['data'], tf.float32)
     data = tf.reshape(data, (3, 4096))
-    if CFG.bandpass:
-        tf_bp_filter(data)
     if CFG.whiten:
         data = whiten(data)
     return data, sample['id']
@@ -235,15 +208,15 @@ def _decode_raw_val_extra(sample):
 def _aug(image, label):
     image = tf.image.per_image_standardization(image)
     # 高斯噪声的标准差为 0.3
-    gau = tf.keras.layers.GaussianNoise(0.3)
+    gau = tf.keras.layers.GaussianNoise(0.2)
     # 以 50％ 的概率为图像添加高斯噪声
     image = tf.cond(tf.random.uniform([]) < 0.5, lambda: gau(image), lambda: image)
-    image = tf.image.random_contrast(image, lower=0.7, upper=1.3)
-    image = tf.cond(tf.random.uniform([]) < 0.5,
-                    lambda: tf.image.random_saturation(image, lower=0.7, upper=1.3),
-                    lambda: tf.image.random_hue(image, max_delta=0.3))
-    # brightness随机调整
-    image = tf.image.random_brightness(image, 0.3)
+    # image = tf.image.random_contrast(image, lower=0.7, upper=1.3)
+    # image = tf.cond(tf.random.uniform([]) < 0.5,
+    #                 lambda: tf.image.random_saturation(image, lower=0.7, upper=1.3),
+    #                 lambda: tf.image.random_hue(image, max_delta=0.3))
+    # # brightness随机调整
+    # image = tf.image.random_brightness(image, 0.3)
     image = tfa.image.random_cutout(image, [20, 20])
     image = tfa.image.random_cutout(image, [20, 20])
     image = tfa.image.random_cutout(image, [20, 20])
@@ -401,7 +374,7 @@ def create_model():
     # optimizer = tf.keras.optimizers.Adam(CFG.learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=1e-6)
     optimizer = tfa.optimizers.RectifiedAdam(learning_rate=CFG.learning_rate,
                                              total_steps=CFG.epoch * CFG.iteration_per_epoch,
-                                             warmup_proportion=0.1, min_lr=1e-5)
+                                             warmup_proportion=0.1, min_lr=1e-6)
     model.compile(optimizer=optimizer,
                   loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
                   metrics=['accuracy', tf.keras.metrics.AUC(name='auc', num_thresholds=498)])

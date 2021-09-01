@@ -24,8 +24,9 @@ class CFG:
     fmin = 20.0
     fmax = 512.0
     nv = 32
-    whiten = True
+    whiten = False
     bandpass = True
+    bandpass_with_tukey = True
     trainable = False
     ts = 0.1
     len = 4096
@@ -203,7 +204,7 @@ def butter_bandpass(lowcut, highcut, fs, order=8):
 
 
 def butter_bandpass_filter(data):
-    filter_sos = butter_bandpass(20., 512., 2048, order=8)
+    filter_sos = butter_bandpass(20., 500., 2048, order=5)
     y = sosfiltfilt(filter_sos, data, padlen=1024)
     return y
 
@@ -221,6 +222,8 @@ d = d.astype(np.float32)
 plt.figure()
 # bandpass filter
 if CFG.bandpass:
+    if CFG.bandpass_with_tukey:
+        d = d * signal.tukey(4096, 0.2)
     d = butter_bandpass_filter(d)
 
 if CFG.show_error_plot:
@@ -265,6 +268,8 @@ for sample_id in CFG.sample_id_group:
     plt.figure()
     # bandpass filter
     if CFG.bandpass:
+        if CFG.bandpass_with_tukey:
+            d = d * signal.tukey(4096, 0.2)
         d = butter_bandpass_filter(d)
 
     if CFG.show_error_plot:
