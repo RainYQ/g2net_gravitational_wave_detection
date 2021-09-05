@@ -23,14 +23,15 @@
   * CQT Dataset (Apply Highpass filter & whiten & VminVmaxTransform & Resize to 512 x 512)
     * https://www.kaggle.com/rainyq/cqt-dataset-encode-jpeg
     * https://www.kaggle.com/rainyq/cqt-dataset-encode-jpeg-test
+* Local Update to 09/05
 * kaggle notebook
-  * CWT Update to 09/01
+  * CWT Update to 09/04
     * https://www.kaggle.com/rainyq/train-g2net-cwt
     * https://www.kaggle.com/rainyq/inference-cwt
   * CQT Update to 08/19
     * https://www.kaggle.com/rainyq/train-g2net
 * Google Colab Notebook
-  * CWT Update to 09/01
+  * CWT Update to 09/04
     * https://colab.research.google.com/drive/1iQ3ezj2dsZ79MVKq9Y_P4Ha9aod3uERZ?usp=sharing
 ## STEP2: Make TFRecords
 * train <br/>
@@ -53,12 +54,16 @@
 * whiten
 * batch
 * CWT & MinMaxScaler & Resize
-* Image Augmentation
+* Augmentation
+  * Gaussian Noise
+  * Cutout
+  * Mixup
+  * Shuffle Channel
 * **TPU Can only calculate CWT at batch_size <= 64**
 
 ## STEP4: Train
-* On RTX2060, batch_size: 16, time: ~20500 s/epoch
-* On RTX2080Ti, batch_size: 32/64(oom), time: Unknown
+* On RTX2060, batch_size: 16, time: ~22000 s/epoch
+* On TPU, batch_size_cwt: 64, batch_size: 512, time: ~2200s / first epoch, ~1600s / other epochs
 * 5-Fold
 * Train Dataset
   * 448000 images
@@ -91,7 +96,7 @@
                                warmup_proportion=0.1, min_lr=1e-5)
   ```
 ## STEP5: Predict
-* CV ~= LB + 0.01
+* LB ~= CV + 0.004
 * On RTX2060, batch_size: 32
 * On RTX2060, 147 min/fold (TTA OFF), Unknown min/fold (TTA ON)
 * On TPU, CWT batch_size: 64, batch_size: 512
@@ -109,8 +114,8 @@
   * **Swap Channel**
   * **Time Shift**
 * **Image Augmentations**
-  * Gaussian Noise
-  * random_brightness
+  * ~~Gaussian Noise~~ std: 0.1
+  * ~~random_brightness~~
   * ~~random_jpeg_quality~~ 不能一次作用于一个 batch
   * ~~random_contrast~~ 效果似乎变差了
   * ~~random_saturation~~ 效果似乎变差了

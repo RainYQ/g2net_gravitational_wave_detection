@@ -22,7 +22,7 @@ class CFG:
     fmax = 512.0
     nv = 32
     whiten = False
-    bandpass = True
+    bandpass = False
     trainable = False
     ts = 0.1
     length = 4096
@@ -35,9 +35,9 @@ class CFG:
     # Dataset Parameters
     HEIGHT = 256
     WIDTH = 256
-    SEED = 2022
+    SEED = 1234
     batch_size = 16
-    check_aug = False
+    check_aug = True
     # *******************************************************************************************
     # split folder location
     split_data_location = "./data_local"
@@ -165,11 +165,21 @@ def _decode_raw(sample):
 @tf.function
 def _aug(image, label, id):
     if CFG.check_aug:
-        image = tf.image.per_image_standardization(image)
-        image = tfa.image.random_cutout(image, [20, 20])
-        image = tfa.image.random_cutout(image, [20, 20])
-        image = tfa.image.random_cutout(image, [20, 20])
-        image = tfa.image.random_cutout(image, [20, 20])
+            image = tf.image.per_image_standardization(image)
+            # 高斯噪声的标准差为 0.2
+            gau = tf.keras.layers.GaussianNoise(0.2)
+            # 以 50％ 的概率为图像添加高斯噪声
+            image = tf.cond(tf.random.uniform([]) < 0.5, lambda: gau(image), lambda: image)
+            # image = tf.image.random_contrast(image, lower=0.7, upper=1.3)
+            # image = tf.cond(tf.random.uniform([]) < 0.5,
+            #                 lambda: tf.image.random_saturation(image, lower=0.7, upper=1.3),
+            #                 lambda: tf.image.random_hue(image, max_delta=0.3))
+            # # brightness随机调整
+            # image = tf.image.random_brightness(image, 0.3)
+            image = tfa.image.random_cutout(image, [20, 20])
+            image = tfa.image.random_cutout(image, [20, 20])
+            image = tfa.image.random_cutout(image, [20, 20])
+            image = tfa.image.random_cutout(image, [20, 20])
     return image, label, id
 
 
@@ -193,8 +203,8 @@ with open(os.path.join(CFG.split_data_location, "splits.data"), 'rb') as file:
     splits = pickle.load(file)
 print("DataSet Split Successful.")
 
-opt = tf.data.Options()
-opt.experimental_deterministic = False
+# opt = tf.data.Options()
+# opt.experimental_deterministic = False
 
 
 def create_train_dataset(train_idx):
@@ -203,7 +213,7 @@ def create_train_dataset(train_idx):
                     .filter(create_idx_filter(train_idx))
                     .map(_remove_idx))
     dataset = (parsed_train
-               .with_options(opt)
+               # .with_options(opt)
                .repeat()
                .map(_decode_raw, num_parallel_calls=AUTOTUNE)
                .batch(CFG.batch_size, num_parallel_calls=AUTOTUNE)

@@ -190,6 +190,19 @@ def _parse_raw_function(sample):
 def _decode_raw(sample):
     data = tf.io.decode_raw(sample['data'], tf.float32)
     data = tf.reshape(data, (3, 4096))
+    # Shuffle Channel
+    indice = tf.range(len(data))
+    indice = tf.random.shuffle(indice)
+    data = tf.gather(data, indice, axis=0)
+    if CFG.whiten:
+        data = whiten(data)
+    return data, tf.cast(sample['label'], tf.float32)
+
+
+@tf.function
+def _decode_raw_val(sample):
+    data = tf.io.decode_raw(sample['data'], tf.float32)
+    data = tf.reshape(data, (3, 4096))
     if CFG.whiten:
         data = whiten(data)
     return data, tf.cast(sample['label'], tf.float32)
@@ -207,8 +220,8 @@ def _decode_raw_val_extra(sample):
 @tf.function
 def _aug(image, label):
     image = tf.image.per_image_standardization(image)
-    # 高斯噪声的标准差为 0.3
-    gau = tf.keras.layers.GaussianNoise(0.2)
+    # 高斯噪声的标准差为 0.1
+    gau = tf.keras.layers.GaussianNoise(0.1)
     # 以 50％ 的概率为图像添加高斯噪声
     image = tf.cond(tf.random.uniform([]) < 0.5, lambda: gau(image), lambda: image)
     # image = tf.image.random_contrast(image, lower=0.7, upper=1.3)
@@ -334,7 +347,7 @@ def create_val_dataset(batchsize, val_idx):
                   .map(_remove_idx))
     dataset = (parsed_val
                # .cache()
-               .map(_decode_raw, num_parallel_calls=AUTOTUNE)
+               .map(_decode_raw_val, num_parallel_calls=AUTOTUNE)
                .batch(batchsize, num_parallel_calls=AUTOTUNE)
                .map(_cwt, num_parallel_calls=AUTOTUNE)
                .map(_aug_val, num_parallel_calls=AUTOTUNE))
