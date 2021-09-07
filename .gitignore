@@ -148,3 +148,4 @@ tfrecords.003
 /test_images/
 /LIGO_data/
 /TFRecords/
+/pre-train_model/

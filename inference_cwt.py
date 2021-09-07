@@ -38,17 +38,17 @@ class CFG:
     batch_size = 32
     HEIGHT = 256
     WIDTH = 256
-    SEED = 2022
-    use_tta = False
+    SEED = 1234
+    use_tta = True
     TTA_STEP = 4
-    from_local = True
+    from_local = False
     # *******************************************************************************************
     # OOF Inference Result Folder
     result_folder = "./"
 
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
-TEST_DATA_ROOT = "./TFRecords/BandPass" if CFG.bandpass else "./TFRecords/No BandPass"
+TEST_DATA_ROOT = "./TFRecords/BandPass/test_tfrecords" if CFG.bandpass else "./TFRecords/No BandPass/test_tfrecords"
 test_img_lists = os.listdir(TEST_DATA_ROOT)
 
 
@@ -165,6 +165,11 @@ def _parse_raw_function(sample):
 def _decode_raw_test(sample):
     data = tf.io.decode_raw(sample['data'], tf.float32)
     data = tf.reshape(data, (3, 4096))
+    if CFG.use_tta:
+        # Shuffle Channel
+        indice = tf.range(len(data))
+        indice = tf.random.shuffle(indice)
+        data = tf.gather(data, indice, axis=0)
     if CFG.whiten:
         data = whiten(data)
     return data, sample['id']
@@ -173,12 +178,6 @@ def _decode_raw_test(sample):
 @tf.function
 def _aug_test(image, id):
     image = tf.image.per_image_standardization(image)
-    if CFG.use_tta:
-        image = tf.image.random_contrast(image, lower=1.0, upper=1.3)
-        image = tf.cond(tf.random.uniform([]) < 0.5,
-                        lambda: tf.image.random_saturation(image, lower=0.7, upper=1.3),
-                        lambda: tf.image.random_hue(image, max_delta=0.3))
-        image = tf.image.random_brightness(image, 0.3)
     return image, id
 
 
@@ -200,7 +199,7 @@ def create_test_dataset():
 
 
 def create_model():
-    backbone = efn.EfficientNetB0(
+    backbone = efn.EfficientNetB7(
         include_top=False,
         input_shape=(CFG.HEIGHT, CFG.WIDTH, 3),
         weights=None,
@@ -250,7 +249,7 @@ def inference(count, path):
     return sub_with_prob
 
 
-# sub_with_prob = inference(0, "./model/0827-CWT/0.9143").set_index('id').reset_index()
+# sub_with_prob = inference(0, "./model/0907-CWT-TPU/0.8657").set_index('id').reset_index()
 # sub_with_prob.to_csv(os.path.join(CFG.result_folder, "submission_with_prob_0.csv"), index=False)
 
 # k-Fold TTA Sample
@@ -258,7 +257,7 @@ if CFG.use_tta:
     sub_with_prob = sum(
         map(
             lambda j:
-            inference(math.floor(j / CFG.TTA_STEP), "./model/0827-CWT/0.9143").set_index('id')
+            inference(math.floor(j / CFG.TTA_STEP), "./model/0907-CWT-TPU/0.8657").set_index('id')
             / (CFG.k_fold * CFG.TTA_STEP), range(CFG.k_fold * CFG.TTA_STEP)
         )
     ).reset_index()
@@ -267,7 +266,7 @@ else:
     sub_with_prob = sum(
         map(
             lambda j:
-            inference(j, "./model/0827-CWT/0.9143").set_index('id') / CFG.k_fold, range(CFG.k_fold)
+            inference(j, "./model/0907-CWT-TPU/0.8657").set_index('id') / CFG.k_fold, range(CFG.k_fold)
         )
     ).reset_index()
     sub_with_prob.to_csv(os.path.join(CFG.result_folder, "submission_with_prob.csv"), index=False)
