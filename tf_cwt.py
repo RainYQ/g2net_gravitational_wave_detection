@@ -29,8 +29,8 @@ class CFG:
     bandpass_with_tukey = True
     trainable = False
     ts = 0.1
-    len = 4096
-    tukey = tf.cast(scipy.signal.windows.get_window(('tukey', ts), len), tf.float32)
+    length = 4096
+    tukey = tf.cast(scipy.signal.windows.get_window(('tukey', ts), length), tf.float32)
     use_tukey = True
     # *******************************************************************************************
     # Sample Parameters
