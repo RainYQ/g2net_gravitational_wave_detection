@@ -257,7 +257,7 @@ if CFG.use_tta:
     sub_with_prob = sum(
         map(
             lambda j:
-            inference(math.floor(j / CFG.TTA_STEP), "./model/0907-CWT-TPU/0.8657").set_index('id')
+            inference(math.floor(j / CFG.TTA_STEP), "./model/0907-CWT-TPU/0.8658").set_index('id')
             / (CFG.k_fold * CFG.TTA_STEP), range(CFG.k_fold * CFG.TTA_STEP)
         )
     ).reset_index()
@@ -266,7 +266,7 @@ else:
     sub_with_prob = sum(
         map(
             lambda j:
-            inference(j, "./model/0907-CWT-TPU/0.8657").set_index('id') / CFG.k_fold, range(CFG.k_fold)
+            inference(j, "./model/0907-CWT-TPU/0.8658").set_index('id') / CFG.k_fold, range(CFG.k_fold)
         )
     ).reset_index()
     sub_with_prob.to_csv(os.path.join(CFG.result_folder, "submission_with_prob.csv"), index=False)
