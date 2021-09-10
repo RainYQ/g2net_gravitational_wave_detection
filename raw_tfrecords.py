@@ -27,6 +27,8 @@ class CFG:
     fmax = 500
     sample_rate = 2048.0
     use_tukey = True
+    use_minmax = False
+    use_float32 = False
 
 
 train = pd.read_csv('training_labels.csv')
@@ -69,12 +71,16 @@ def create_dataset(data, i, mode):
                 data *= signal.tukey(4096, 0.2)
             for i in range(data.shape[0]):
                 data[i, :] = butter_bandpass_filter(data[i, :])
-            for i in range(data.shape[0]):
-                # Min Max Scaler -1 1
-                data[i, :] = (data[i, :] - np.min(data[i, :])) / (np.max(data[i, :]) - np.min(data[i, :]))
-                data[i, :] = (data[i, :] - 0.5) * 2.0
+            if CFG.use_minmax:
+                for i in range(data.shape[0]):
+                    # Min Max Scaler -1 1
+                    data[i, :] = (data[i, :] - np.min(data[i, :])) / (np.max(data[i, :]) - np.min(data[i, :]))
+                    data[i, :] = (data[i, :] - 0.5) * 2.0
+            if CFG.use_float32:
                 # Save Space
-            raw = data.astype(np.float32).tobytes()
+                raw = data.astype(np.float32).tobytes()
+            else:
+                raw = data.astype(np.float64).tobytes()
             if mode == "train":
                 features = tf.train.Features(feature={
                     'id': tf.train.Feature(bytes_list=tf.train.BytesList(value=[id.encode('utf-8')])),
