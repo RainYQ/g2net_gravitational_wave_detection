@@ -16,19 +16,22 @@ for gpu in gpus:
 
 
 class CFG:
-    Show = False
-    NUMBER_IN_TFRECORD = 4096
-    wave_data_prefix = "./"
-    tfrecords_prefix = "./TFRecords/BandPass/"
     # *******************************************************************************************
     # banpass filter Parameters
-    bandpass = True
+    bandpass = False
     fmin = 20
     fmax = 500
     sample_rate = 2048.0
-    use_tukey = True
+    use_tukey = False
     use_minmax = False
     use_float32 = False
+    Show = False
+    NUMBER_IN_TFRECORD = 4096
+    # *******************************************************************************************
+    # file location
+    wave_data_prefix = "./"
+    tfrecords_prefix = "./TFRecords/BandPass/" if bandpass else "./TFRecords/No Bandpass/"
+
 
 
 train = pd.read_csv('training_labels.csv')
