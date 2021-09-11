@@ -63,7 +63,7 @@ class CFG:
     ls = 0.99
     T_SHIFT = False
     S_SHIFT = False
-    Use_Gaussian_Noise = False
+    Use_Gaussian_Noise = True
     # *******************************************************************************************
     # Tensorboard
     tensorboard = False

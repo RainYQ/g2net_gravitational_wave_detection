@@ -72,8 +72,9 @@ def create_dataset(data, i, mode):
             data = np.load(get_file_path(id, mode)).astype(np.float64)
             if CFG.use_tukey:
                 data *= signal.tukey(4096, 0.2)
-            for i in range(data.shape[0]):
-                data[i, :] = butter_bandpass_filter(data[i, :])
+            if CFG.bandpass:
+                for i in range(data.shape[0]):
+                    data[i, :] = butter_bandpass_filter(data[i, :])
             if CFG.use_minmax:
                 for i in range(data.shape[0]):
                     # Min Max Scaler -1 1
