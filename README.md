@@ -50,12 +50,12 @@
   * channel3
     * mean: -5.39777633e-26
     * var: 3.38153083e-42
-* Local Update to 09/11
+* Local Update to 09/13
 * kaggle notebook
   * CWT Update to 09/08
     * https://www.kaggle.com/rainyq/train-g2net-cwt
     * https://www.kaggle.com/rainyq/inference-cwt
-  * CQT Update to 09/11
+  * CQT Update to 09/12
     * https://www.kaggle.com/rainyq/train-g2net-cqt
     * https://www.kaggle.com/rainyq/inference-cqt
   * pre-processing CQT Update to 08/19
@@ -63,7 +63,7 @@
 * Google Colab Notebook
   * CWT Update to 09/08
     * https://colab.research.google.com/drive/1iQ3ezj2dsZ79MVKq9Y_P4Ha9aod3uERZ?usp=sharing
-  * CQT Update to 09/11
+  * CQT Update to 09/12
     * https://colab.research.google.com/drive/1-2IDAhoTasx7GnHndazHb-IlQq2_v-u5?usp=sharing
 ## STEP2: Make TFRecords
 * train <br/>
@@ -132,7 +132,7 @@
 * On RTX2060, batch_size: 64
 * On RTX2060, ~35 min/fold
 * On TPU, batch_size: 1024
-* On TPU, 24 min/fold
+* On TPU, 4.5 min/fold **Fix bug**
 
 ## STEP6: TODO
 ~~Sample~~ means finished <br/>
@@ -140,18 +140,19 @@
 * ~~**Add mixup**~~
 * ~~**Test CosineAnnealing learning rate strategy**~~
 * ~~**Add label smooth**~~
-* ~~**Add Cutout**~~ 没有观察到泛化能力提升
+* ~~**Add Cutout**~~
 * Add Cutmix
-* **Signal Augmentations**
+* Compare different normalization styles
+* **Use Combine Feature Extractor, train a better classifier**
+  * Combine CQT CWT
+  * Combine different parameters of CQT or CWT
+* More Augmentations
+* **~~Signal Augmentations~~**
   * ~~**Swap Channel**~~
   * ~~Time Shift~~
-* **Image Augmentations**
+  * ~~Spector Shift~~
+* **~~Image Augmentations~~**
   * ~~Gaussian Noise~~ std: 0.1
-  * ~~random_brightness~~
-  * ~~random_jpeg_quality~~ 不能一次作用于一个 batch
-  * ~~random_contrast~~ 效果似乎变差了
-  * ~~random_saturation~~ 效果似乎变差了
-  * ~~random_hue~~ 效果似乎变差了
 * ~~Use ROC_STAR_Loss https://github.com/iridiumblue/roc-star~~ 没啥好效果
 * ~~**Add TTA** we can use large TTA_STEP~~ 提升非常小
 * **Test ResNet RegNet(PyTorch)**
