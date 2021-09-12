@@ -27,11 +27,11 @@ class CFG:
     hop_length = 16
     bins_per_octave = 24
     whiten = False
+    whiten_use_tukey = True
     bandpass = True
     ts = 0.1
     length = 4096
     tukey = tf.cast(scipy.signal.windows.get_window(('tukey', ts), length), tf.float32)
-    use_tukey = True
     # *******************************************************************************************
     # tfrecords folder location
     tfrecords_fold_prefix = "./TFRecords/BandPass" if bandpass else "./TFRecords/No BandPass"
@@ -40,12 +40,27 @@ class CFG:
     split_data_location = "./data_local"
     # *******************************************************************************************
     # Train Parameters
-    SEED = 1234
+    SEED = 2020
     HEIGHT = 256
     WIDTH = 256
     batch_size = 16
+    # *******************************************************************************************
+    # Augmentation
+    use_shuffle_channel = True
+    Use_Gaussian_Noise = True
+    mixup = False
+    label_smooth = True
+    ls = 0.99
     T_SHIFT = False
     S_SHIFT = False
+    # *******************************************************************************************
+    # Normalization Style
+    signal_use_channel_std_mean = True
+    mean = tf.reshape(tf.cast([5.36416325e-27, 1.21596245e-25, 2.37073866e-27], tf.float64), (3, 1))
+    std = tf.reshape(tf.cast(np.sqrt(np.array([5.50707291e-41, 5.50458798e-41, 3.37861660e-42], dtype=np.float64)),
+                             tf.float64), (3, 1))
+    # 'channel' or 'global' or None
+    image_norm_type = None
     # *******************************************************************************************
     # Set to True for first Run
     generate_split_data = False
@@ -161,22 +176,31 @@ def cqt(wave, hop_length=16):
 
 @tf.function
 def _cqt(image, label, id):
-    return cqt(image), label, id
+    return cqt(image, CFG.hop_length), label, id
 
 
 @tf.function
-def MinMaxScaler(data, lower, upper):
+def MinMaxScaler(data, lower, upper, mode):
     lower = tf.cast(lower, tf.float32)
     upper = tf.cast(upper, tf.float32)
-    min_val = tf.reshape(tf.reduce_min(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
-    max_val = tf.reshape(tf.reduce_max(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
-    std_data = tf.divide(tf.subtract(data, min_val), tf.subtract(max_val, min_val))
+    if mode == 'channel':
+        min_val = tf.reshape(tf.reduce_min(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
+        max_val = tf.reshape(tf.reduce_max(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
+        std_data = tf.divide(tf.subtract(data, min_val), tf.subtract(max_val, min_val))
+    elif mode == 'global':
+        lower = tf.cast(lower, tf.float32)
+        upper = tf.cast(upper, tf.float32)
+        min_val = tf.reshape(tf.reduce_min(data, axis=[1, 2, 3]), [tf.shape(data)[0], 1, 1, 1])
+        max_val = tf.reshape(tf.reduce_max(data, axis=[1, 2, 3]), [tf.shape(data)[0], 1, 1, 1])
+        std_data = tf.divide(tf.subtract(data, min_val), tf.subtract(max_val, min_val))
+    else:
+        return data
     return tf.add(tf.multiply(std_data, tf.subtract(upper, lower)), lower)
 
 
 @tf.function
 def whiten(signal):
-    if CFG.use_tukey:
+    if CFG.whiten_use_tukey:
         window = CFG.tukey
     else:
         window = tf.signal.hann_window(signal.shape[-1], periodic=True)
@@ -212,12 +236,18 @@ def _parse_raw_function(sample):
 
 @tf.function
 def _decode_raw(sample):
-    data = tf.io.decode_raw(sample['data'], tf.float32)
+    data = tf.io.decode_raw(sample['data'], tf.float64)
     data = tf.reshape(data, (3, 4096))
-    # Shuffle Channel
-    indice = tf.range(len(data))
-    indice = tf.random.shuffle(indice)
-    data = tf.gather(data, indice, axis=0)
+    if CFG.signal_use_channel_std_mean:
+        data = (data - CFG.mean) / CFG.std
+    else:
+        data /= tf.reshape(tf.reduce_max(data, axis=1), (3, 1))
+    data = tf.cast(data, tf.float32)
+    if CFG.use_shuffle_channel:
+        # Shuffle Channel
+        indice = tf.range(len(data))
+        indice = tf.random.shuffle(indice)
+        data = tf.gather(data, indice, axis=0)
     if CFG.whiten:
         data = whiten(data)
     label = tf.cast(sample['label'], tf.float32)
@@ -242,20 +272,22 @@ def spector_shift(img):
 
 @tf.function
 def _aug(image, label, id):
-    image = MinMaxScaler(tf.image.resize(image, (CFG.HEIGHT, CFG.WIDTH)), 0.0, 1.0)
-    image = tf.image.per_image_standardization(image)
-    if CFG.T_SHIFT:
-        image = tf.map_fn(time_shift, image, dtype=tf.float32)
-    if CFG.S_SHIFT:
-        image = tf.map_fn(spector_shift, image, dtype=tf.float32)
-    # 高斯噪声的标准差为 0.1
-    gau = tf.keras.layers.GaussianNoise(0.1)
-    # 以 50％ 的概率为图像添加高斯噪声
-    image = tf.cond(tf.random.uniform([]) < 0.5, lambda: gau(image), lambda: image)
-    image = tfa.image.random_cutout(image, [20, 20])
-    image = tfa.image.random_cutout(image, [20, 20])
-    image = tfa.image.random_cutout(image, [20, 20])
-    image = tfa.image.random_cutout(image, [20, 20])
+    image = tf.image.resize(image, (CFG.HEIGHT, CFG.WIDTH))
+    image = MinMaxScaler(image, 0.0, 1.0, CFG.image_norm_type)
+    # image = tf.image.per_image_standardization(image)
+    # if CFG.T_SHIFT:
+    #     image = tf.map_fn(time_shift, image, dtype=tf.float32)
+    # if CFG.S_SHIFT:
+    #     image = tf.map_fn(spector_shift, image, dtype=tf.float32)
+    # if CFG.Use_Gaussian_Noise:
+    #     # 高斯噪声的标准差为 0.1
+    #     gau = tf.keras.layers.GaussianNoise(0.1)
+    #     # 以 50％ 的概率为图像添加高斯噪声
+    #     image = tf.cond(tf.random.uniform([]) < 0.5, lambda: gau(image), lambda: image)
+    # image = tfa.image.random_cutout(image, [20, 20])
+    # image = tfa.image.random_cutout(image, [20, 20])
+    # image = tfa.image.random_cutout(image, [20, 20])
+    # image = tfa.image.random_cutout(image, [20, 20])
     return image, label, id
 
 

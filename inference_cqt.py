@@ -40,10 +40,18 @@ class CFG:
     batch_size = 64
     HEIGHT = 256
     WIDTH = 256
-    SEED = 1234
+    SEED = 2020
     use_tta = True
     TTA_STEP = 4
     from_local = True
+    # *******************************************************************************************
+    # Normalization Style
+    signal_use_channel_std_mean = True
+    mean = tf.reshape(tf.cast([2.26719448e-25, -1.23312232e-25, -5.39777633e-26], tf.float64), (3, 1))
+    std = tf.reshape(tf.cast(np.sqrt(np.array([5.50354975e-41, 5.50793453e-41, 3.38153083e-42], dtype=np.float64)),
+                             tf.float64), (3, 1))
+    # 'channel' or 'global' or None
+    image_norm_type = None
     # *******************************************************************************************
     # OOF Inference Result Folder
     result_folder = "./"
@@ -174,17 +182,26 @@ def cqt(wave, hop_length=16):
 
 @tf.function
 def _cqt_test(image, id):
-    return cqt(image), id
+    return cqt(image, CFG.hop_length), id
 
 
 
 @tf.function
-def MinMaxScaler(data, lower, upper):
+def MinMaxScaler(data, lower, upper, mode):
     lower = tf.cast(lower, tf.float32)
     upper = tf.cast(upper, tf.float32)
-    min_val = tf.reshape(tf.reduce_min(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
-    max_val = tf.reshape(tf.reduce_max(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
-    std_data = tf.divide(tf.subtract(data, min_val), tf.subtract(max_val, min_val))
+    if mode == 'channel':
+        min_val = tf.reshape(tf.reduce_min(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
+        max_val = tf.reshape(tf.reduce_max(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
+        std_data = tf.divide(tf.subtract(data, min_val), tf.subtract(max_val, min_val))
+    elif mode == 'global':
+        lower = tf.cast(lower, tf.float32)
+        upper = tf.cast(upper, tf.float32)
+        min_val = tf.reshape(tf.reduce_min(data, axis=0), [tf.shape(data)[0], 1, 1, 1])
+        max_val = tf.reshape(tf.reduce_max(data, axis=0), [tf.shape(data)[0], 1, 1, 1])
+        std_data = tf.divide(tf.subtract(data, min_val), tf.subtract(max_val, min_val))
+    else:
+        return data
     return tf.add(tf.multiply(std_data, tf.subtract(upper, lower)), lower)
 
 
@@ -214,8 +231,13 @@ def _parse_raw_function(sample):
 
 @tf.function
 def _decode_raw_test(sample):
-    data = tf.io.decode_raw(sample['data'], tf.float32)
+    data = tf.io.decode_raw(sample['data'], tf.float64)
     data = tf.reshape(data, (3, 4096))
+    if CFG.signal_use_channel_std_mean:
+        data = (data - CFG.mean) / CFG.std
+    else:
+        data /= tf.reshape(tf.reduce_max(data, axis=1), (3, 1))
+    data = tf.cast(data, tf.float32)
     if CFG.use_tta:
         # Shuffle Channel
         indice = tf.range(len(data))
@@ -228,7 +250,8 @@ def _decode_raw_test(sample):
 
 @tf.function
 def _aug_test(image, id):
-    image = MinMaxScaler(tf.image.resize(image, (CFG.HEIGHT, CFG.WIDTH)), 0.0, 1.0)
+    image = tf.image.resize(image, (CFG.HEIGHT, CFG.WIDTH))
+    image = MinMaxScaler(image, 0.0, 1.0, CFG.image_norm_type)
     image = tf.image.per_image_standardization(image)
     return image, id
 
@@ -260,19 +283,11 @@ def create_model():
     if not CFG.from_local:
         model = tf.keras.Sequential([
             backbone,
-            tf.keras.layers.BatchNormalization(),
-            tf.keras.layers.Dropout(0.5),
-            tf.keras.layers.Dense(128, kernel_initializer=tf.keras.initializers.he_normal(), activation='relu'),
-            tf.keras.layers.BatchNormalization(),
             tf.keras.layers.Dropout(0.5),
             tf.keras.layers.Dense(1, kernel_initializer=tf.keras.initializers.he_normal(), activation='sigmoid')])
     else:
         model = tf.keras.Sequential([
             backbone,
-            GroupNormalization(group=32),
-            tf.keras.layers.Dropout(0.5),
-            tf.keras.layers.Dense(128, kernel_initializer=tf.keras.initializers.he_normal(), activation='relu'),
-            GroupNormalization(group=32),
             tf.keras.layers.Dropout(0.5),
             tf.keras.layers.Dense(1, kernel_initializer=tf.keras.initializers.he_normal(), activation='sigmoid')])
     return model
