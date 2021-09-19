@@ -1,4 +1,12 @@
 # g2net_gravitational_wave_detection
+# Results
+| | CQT Fold 0 | CQT Fold 1 | CQT Fold 2 | CQT Fold 3 | CQT Fold 4 | CWT Fold 0 | CWT Fold 1 | CWT Fold 2 | CWT Fold 3 | CWT Fold 4 | CV / LB |
+| :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
+| CV | 0.8712 | 0.8709 | | | | 0.8724 | 0.8718 |
+| LB | 0.8726 | 0.8711 | | | | 0.8735 | 0.8734 |
+| CQT Ensemble | √ | √ | | | | | | | | | 0.8719 / 0.8730|
+| CWT Ensemble | | | | | | √ | √ | | | | 0.87295 / 0.8743|
+| Ensemble | √ | √ | | | | √ | √ | | | | 0.872425 / 0.8754|
 ## Prepare Step
 1. Use [GitHub Desktop | Simple collaboration from your desktop](https://desktop.github.com/)
 2. Clone https://github.com/RainYQ/g2net_gravitational_wave_detection.git
