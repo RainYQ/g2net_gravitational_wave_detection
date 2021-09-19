@@ -52,18 +52,18 @@
     * var: 3.38153083e-42
 * Local Update to 09/13
 * kaggle notebook
-  * CWT Update to 09/08
+  * CWT Update to 09/19
     * https://www.kaggle.com/rainyq/train-g2net-cwt
     * https://www.kaggle.com/rainyq/inference-cwt
-  * CQT Update to 09/13
+  * CQT Update to 09/19
     * https://www.kaggle.com/rainyq/train-g2net-cqt
     * https://www.kaggle.com/rainyq/inference-cqt
   * pre-processing CQT Update to 08/19
     * https://www.kaggle.com/rainyq/train-g2net
 * Google Colab Notebook
-  * CWT Update to 09/08
+  * CWT Update to 09/19
     * https://colab.research.google.com/drive/1iQ3ezj2dsZ79MVKq9Y_P4Ha9aod3uERZ?usp=sharing
-  * CQT Update to 09/13
+  * CQT Update to 09/19
     * https://colab.research.google.com/drive/1-2IDAhoTasx7GnHndazHb-IlQq2_v-u5?usp=sharing
 ## STEP2: Make TFRecords
 * train <br/>
@@ -126,11 +126,11 @@
                                warmup_proportion=0.1, min_lr=1e-5)
   ```
 ## STEP5: Predict
-* LB ~= CV + 0.004
+* LB ~= CV + 0.0015
 * On RTX2060, batch_size: 64
 * On RTX2060, ~35 min/fold
 * On TPU, batch_size: 1024
-* On TPU, 4.5 min/fold
+* On TPU, CQT 10 min/fold CWT 12.5 min/fold
 
 ## STEP6: TODO
 ~~Sample~~ means finished <br/>
