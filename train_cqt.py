@@ -55,13 +55,13 @@ class CFG:
     learning_rate = 1e-4
     initial_cycle = 4
     # 'RectifiedAdam' or 'Adam with CosineDecayRestarts' or 'SGD with CosineDecayRestarts' or 'Adam with SWA'
-    # or 'AdamW with CosineDecay'
+    # or 'AdamW with CosineDecay' or 'Adam with AutoDecay'
     optimizer = 'RectifiedAdam'
     k_fold = 5
     use_pretrain = False
     # *******************************************************************************************
     # Augmentation
-    use_shuffle_channel = True
+    use_shuffle_channel = False
     Use_Gaussian_Noise = True
     mixup = False
     label_smooth = True
@@ -400,12 +400,12 @@ def _mixup(data, targ):
     return x, y
 
 
-indices = []
-id = []
-label = []
 preprocess_dataset = (raw_image_dataset.map(_parse_raw_function, num_parallel_calls=AUTOTUNE)
                       .enumerate())
 if CFG.generate_split_data:
+    indices = []
+    id = []
+    label = []
     for i, sample in tqdm(preprocess_dataset):
         indices.append(i.numpy())
         label.append(sample['label'].numpy())
@@ -502,32 +502,6 @@ def create_model():
         backbone,
         tf.keras.layers.Dropout(0.5),
         tf.keras.layers.Dense(1, kernel_initializer=tf.keras.initializers.he_normal(), activation='sigmoid')])
-    if CFG.optimizer == 'RectifiedAdam':
-        optimizer = tfa.optimizers.RectifiedAdam(learning_rate=CFG.learning_rate,
-                                                 total_steps=CFG.epoch * CFG.iteration_per_epoch,
-                                                 warmup_proportion=0.1, min_lr=1e-6)
-    elif CFG.optimizer == 'Adam with CosineDecayRestarts':
-        lr_decayed_fn = (tf.keras.optimizers.schedules.CosineDecayRestarts(
-            CFG.learning_rate,
-            CFG.iteration_per_epoch * CFG.initial_cycle, 1.5))
-        optimizer = tf.keras.optimizers.Adam(lr_decayed_fn, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=1e-6)
-    elif CFG.optimizer == 'SGD with CosineDecayRestarts':
-        lr_decayed_fn = (tf.keras.optimizers.schedules.CosineDecayRestarts(
-            CFG.learning_rate,
-            CFG.iteration_per_epoch * CFG.initial_cycle, 1.5))
-        optimizer = tf.keras.optimizers.SGD(lr_decayed_fn, momentum=0.9, decay=1e-4)
-    elif CFG.optimizer == 'Adam with SWA':
-        optimizer = tf.keras.optimizers.Adam(CFG.learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=1e-6)
-        optimizer = tfa.optimizers.SWA(optimizer)
-    elif CFG.optimizer == 'AdamW with CosineDecay':
-        lr_decayed_fn = tf.keras.optimizers.schedules.CosineDecay(CFG.learning_rate, CFG.iteration_per_epoch)
-        optimizer = tfa.optimizers.AdamW(lr_decayed_fn, learning_rate=1e-4)
-    else:
-        print('No such optimizer.')
-        return None
-    model.compile(optimizer=optimizer,
-                  loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
-                  metrics=['accuracy', tf.keras.metrics.AUC(name='auc', num_thresholds=498)])
     if CFG.use_pretrain:
         model.load_weights("./model/pre-train_model/model_best_0.h5")
     return model
@@ -553,14 +527,12 @@ def plot_history(history, name):
     plt.savefig(name)
 
 
-model = create_model()
-
-
 # Run Inference On Val Dataset.
 # Save as "./submission_with_prob_val_i.csv"
 def inference(count, path):
     idx_val_tf = tf.cast(tf.constant(splits[count][1]), tf.int64)
     v_test_dataset = create_val_extra_dataset(CFG.batch_size * 2, idx_val_tf)
+    model = create_model()
     model.load_weights(path + "/model_best_%d.h5" % count)
     rec_ids = []
     probs = []
@@ -582,32 +554,55 @@ def inference(count, path):
 def train(splits, split_id):
     print("batchsize", CFG.batch_size)
     model = create_model()
+    if CFG.optimizer == 'RectifiedAdam':
+        optimizer = tfa.optimizers.RectifiedAdam(learning_rate=CFG.learning_rate,
+                                                 total_steps=CFG.epoch * CFG.iteration_per_epoch,
+                                                 warmup_proportion=0.1, min_lr=1e-6)
+    elif CFG.optimizer == 'Adam with CosineDecayRestarts':
+        lr_decayed_fn = (tf.keras.optimizers.schedules.CosineDecayRestarts(
+            CFG.learning_rate,
+            CFG.iteration_per_epoch * CFG.initial_cycle, 1.5))
+        optimizer = tf.keras.optimizers.Adam(lr_decayed_fn, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=1e-6)
+    elif CFG.optimizer == 'SGD with CosineDecayRestarts':
+        lr_decayed_fn = (tf.keras.optimizers.schedules.CosineDecayRestarts(
+            CFG.learning_rate,
+            CFG.iteration_per_epoch * CFG.initial_cycle, 1.5))
+        optimizer = tf.keras.optimizers.SGD(lr_decayed_fn, momentum=0.9, decay=1e-4)
+    elif CFG.optimizer == 'Adam with SWA':
+        optimizer = tf.keras.optimizers.Adam(CFG.learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=1e-6)
+        optimizer = tfa.optimizers.SWA(optimizer)
+    elif CFG.optimizer == 'AdamW with CosineDecay':
+        lr_decayed_fn = tf.keras.optimizers.schedules.CosineDecay(CFG.learning_rate, CFG.iteration_per_epoch)
+        optimizer = tfa.optimizers.AdamW(lr_decayed_fn, learning_rate=1e-4)
+    elif CFG.optimizer == 'Adam with AutoDecay':
+        optimizer = tf.keras.optimizers.Adam(CFG.learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=1e-4)
+        autodecay_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3, min_lr=1e-6)
+    else:
+        print('No such optimizer.')
+        return None
+    model.compile(optimizer=optimizer,
+                  loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
+                  metrics=['accuracy', tf.keras.metrics.AUC(name='auc', num_thresholds=498)])
     idx_train_tf = tf.cast(tf.constant(splits[split_id][0]), tf.int64)
     idx_val_tf = tf.cast(tf.constant(splits[split_id][1]), tf.int64)
     # 生成训练集和验证集
     dataset = create_train_dataset(CFG.batch_size, idx_train_tf)
     vdataset = create_val_dataset(CFG.batch_size, idx_val_tf)
+    callbacks = [
+        tf.keras.callbacks.ModelCheckpoint(
+            filepath='./model/model_best_%d.h5' % split_id,
+            save_weights_only=True,
+            monitor='val_loss',
+            mode='min',
+            save_best_only=True)
+    ]
     if CFG.tensorboard:
         log_dir = "logs/profile/" + datetime.now().strftime("%Y%m%d-%H%M%S")
         tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch=2)
-        callbacks = [
-            tf.keras.callbacks.ModelCheckpoint(
-                filepath='./model/model_best_%d.h5' % split_id,
-                save_weights_only=True,
-                monitor='val_loss',
-                mode='min',
-                save_best_only=True),
-            tensorboard_callback
-        ]
-    else:
-        callbacks = [
-            tf.keras.callbacks.ModelCheckpoint(
-                filepath='./model/model_best_%d.h5' % split_id,
-                save_weights_only=True,
-                monitor='val_auc',
-                mode='max',
-                save_best_only=True)
-        ]
+        callbacks.append(tensorboard_callback)
+    if CFG.optimizer == 'Adam with AutoDecay':
+        callbacks.append(autodecay_lr)
+    print(callbacks)
     history = model.fit(dataset,
                         batch_size=CFG.batch_size,
                         steps_per_epoch=CFG.iteration_per_epoch,
@@ -615,7 +610,6 @@ def train(splits, split_id):
                         validation_data=vdataset,
                         callbacks=callbacks
                         )
-
     plot_history(history, 'history_%d.png' % split_id)
     with open("history_%d.data" % split_id, 'wb') as file:
         pickle.dump(history.history, file)

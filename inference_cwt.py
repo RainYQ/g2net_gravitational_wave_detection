@@ -22,26 +22,33 @@ class CFG:
     sample_rate = 2048.0
     fmin = 20.0
     fmax = 512.0
-    nv = 32
+    nv = 8
     whiten = False
+    whiten_use_tukey = True
     bandpass = True
     trainable = False
     ts = 0.1
     length = 4096
     tukey = tf.cast(scipy.signal.windows.get_window(('tukey', ts), length), tf.float32)
-    use_tukey = True
     # *******************************************************************************************
     # Test Parameters
     fold = [0]
     k_fold = len(fold)
     # if batch_size sets to 64, CWT will OOM
     batch_size = 32
-    HEIGHT = 256
-    WIDTH = 256
-    SEED = 1234
-    use_tta = True
+    HEIGHT = 512
+    WIDTH = 512
+    SEED = 2020
+    use_tta = False
     TTA_STEP = 4
-    from_local = False
+    # *******************************************************************************************
+    # Normalization Style
+    signal_use_channel_std_mean = True
+    mean = tf.reshape(tf.cast([2.26719448e-25, -1.23312232e-25, -5.39777633e-26], tf.float64), (3, 1))
+    std = tf.reshape(tf.cast(np.sqrt(np.array([5.50354975e-41, 5.50793453e-41, 3.38153083e-42], dtype=np.float64)),
+                             tf.float64), (3, 1))
+    # 'channel' or 'global' or None
+    image_norm_type = None
     # *******************************************************************************************
     # OOF Inference Result Folder
     result_folder = "./"
@@ -124,22 +131,31 @@ def cwt(input):
 
 @tf.function
 def _cwt_test(image, id):
-    return MinMaxScaler(tf.image.resize(cwt(image), (CFG.HEIGHT, CFG.WIDTH)), 0.0, 1.0), id
+    return cwt(image), id
 
 
 @tf.function
-def MinMaxScaler(data, lower, upper):
+def MinMaxScaler(data, lower, upper, mode):
     lower = tf.cast(lower, tf.float32)
     upper = tf.cast(upper, tf.float32)
-    min_val = tf.reshape(tf.reduce_min(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
-    max_val = tf.reshape(tf.reduce_max(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
-    std_data = tf.divide(tf.subtract(data, min_val), tf.subtract(max_val, min_val))
+    if mode == 'channel':
+        min_val = tf.reshape(tf.reduce_min(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
+        max_val = tf.reshape(tf.reduce_max(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
+        std_data = tf.divide(tf.subtract(data, min_val), tf.subtract(max_val, min_val))
+    elif mode == 'global':
+        lower = tf.cast(lower, tf.float32)
+        upper = tf.cast(upper, tf.float32)
+        min_val = tf.reshape(tf.reduce_min(data, axis=0), [tf.shape(data)[0], 1, 1, 1])
+        max_val = tf.reshape(tf.reduce_max(data, axis=0), [tf.shape(data)[0], 1, 1, 1])
+        std_data = tf.divide(tf.subtract(data, min_val), tf.subtract(max_val, min_val))
+    else:
+        return data
     return tf.add(tf.multiply(std_data, tf.subtract(upper, lower)), lower)
 
 
 @tf.function
 def whiten(signal):
-    if CFG.use_tukey:
+    if CFG.whiten_use_tukey:
         window = CFG.tukey
     else:
         window = tf.signal.hann_window(signal.shape[-1], periodic=True)
@@ -163,8 +179,13 @@ def _parse_raw_function(sample):
 
 @tf.function
 def _decode_raw_test(sample):
-    data = tf.io.decode_raw(sample['data'], tf.float32)
+    data = tf.io.decode_raw(sample['data'], tf.float64)
     data = tf.reshape(data, (3, 4096))
+    if CFG.signal_use_channel_std_mean:
+        data = (data - CFG.mean) / CFG.std
+    else:
+        data /= tf.reshape(tf.reduce_max(data, axis=1), (3, 1))
+    data = tf.cast(data, tf.float32)
     if CFG.use_tta:
         # Shuffle Channel
         indice = tf.range(len(data))
@@ -177,6 +198,8 @@ def _decode_raw_test(sample):
 
 @tf.function
 def _aug_test(image, id):
+    image = tf.image.resize(image, (CFG.HEIGHT, CFG.WIDTH))
+    image = MinMaxScaler(image, 0.0, 1.0, CFG.image_norm_type)
     image = tf.image.per_image_standardization(image)
     return image, id
 
@@ -199,30 +222,16 @@ def create_test_dataset():
 
 
 def create_model():
-    backbone = efn.EfficientNetB7(
+    backbone = efn.EfficientNetB0(
         include_top=False,
         input_shape=(CFG.HEIGHT, CFG.WIDTH, 3),
         weights=None,
         pooling='avg'
     )
-    if not CFG.from_local:
-        model = tf.keras.Sequential([
-            backbone,
-            tf.keras.layers.BatchNormalization(),
-            tf.keras.layers.Dropout(0.5),
-            tf.keras.layers.Dense(128, kernel_initializer=tf.keras.initializers.he_normal(), activation='relu'),
-            tf.keras.layers.BatchNormalization(),
-            tf.keras.layers.Dropout(0.5),
-            tf.keras.layers.Dense(1, kernel_initializer=tf.keras.initializers.he_normal(), activation='sigmoid')])
-    else:
-        model = tf.keras.Sequential([
-            backbone,
-            GroupNormalization(group=32),
-            tf.keras.layers.Dropout(0.5),
-            tf.keras.layers.Dense(128, kernel_initializer=tf.keras.initializers.he_normal(), activation='relu'),
-            GroupNormalization(group=32),
-            tf.keras.layers.Dropout(0.5),
-            tf.keras.layers.Dense(1, kernel_initializer=tf.keras.initializers.he_normal(), activation='sigmoid')])
+    model = tf.keras.Sequential([
+        backbone,
+        tf.keras.layers.Dropout(0.5),
+        tf.keras.layers.Dense(1, kernel_initializer=tf.keras.initializers.he_normal(), activation='sigmoid')])
     return model
 
 
@@ -249,15 +258,12 @@ def inference(count, path):
     return sub_with_prob
 
 
-# sub_with_prob = inference(0, "./model/0907-CWT-TPU/0.8657").set_index('id').reset_index()
-# sub_with_prob.to_csv(os.path.join(CFG.result_folder, "submission_with_prob_0.csv"), index=False)
-
 # k-Fold TTA Sample
 if CFG.use_tta:
     sub_with_prob = sum(
         map(
             lambda j:
-            inference(math.floor(j / CFG.TTA_STEP), "./model/0907-CWT-TPU/0.8658").set_index('id')
+            inference(math.floor(j / CFG.TTA_STEP), "./model").set_index('id')
             / (CFG.k_fold * CFG.TTA_STEP), range(CFG.k_fold * CFG.TTA_STEP)
         )
     ).reset_index()
@@ -266,7 +272,7 @@ else:
     sub_with_prob = sum(
         map(
             lambda j:
-            inference(j, "./model/0907-CWT-TPU/0.8658").set_index('id') / CFG.k_fold, range(CFG.k_fold)
+            inference(j, "./model").set_index('id') / CFG.k_fold, range(CFG.k_fold)
         )
     ).reset_index()
     sub_with_prob.to_csv(os.path.join(CFG.result_folder, "submission_with_prob.csv"), index=False)
