@@ -24,8 +24,8 @@ class CFG:
     sample_rate = 2048.0
     fmin = 20.0
     fmax = 512.0
-    hop_length = 16
-    bins_per_octave = 24
+    hop_length = 6
+    bins_per_octave = 9
     whiten = False
     whiten_use_tukey = True
     bandpass = True
@@ -274,20 +274,20 @@ def spector_shift(img):
 def _aug(image, label, id):
     image = tf.image.resize(image, (CFG.HEIGHT, CFG.WIDTH))
     image = MinMaxScaler(image, 0.0, 1.0, CFG.image_norm_type)
-    # image = tf.image.per_image_standardization(image)
-    # if CFG.T_SHIFT:
-    #     image = tf.map_fn(time_shift, image, dtype=tf.float32)
-    # if CFG.S_SHIFT:
-    #     image = tf.map_fn(spector_shift, image, dtype=tf.float32)
-    # if CFG.Use_Gaussian_Noise:
-    #     # 高斯噪声的标准差为 0.1
-    #     gau = tf.keras.layers.GaussianNoise(0.1)
-    #     # 以 50％ 的概率为图像添加高斯噪声
-    #     image = tf.cond(tf.random.uniform([]) < 0.5, lambda: gau(image), lambda: image)
-    # image = tfa.image.random_cutout(image, [20, 20])
-    # image = tfa.image.random_cutout(image, [20, 20])
-    # image = tfa.image.random_cutout(image, [20, 20])
-    # image = tfa.image.random_cutout(image, [20, 20])
+    image = tf.image.per_image_standardization(image)
+    if CFG.T_SHIFT:
+        image = tf.map_fn(time_shift, image, dtype=tf.float32)
+    if CFG.S_SHIFT:
+        image = tf.map_fn(spector_shift, image, dtype=tf.float32)
+    if CFG.Use_Gaussian_Noise:
+        # 高斯噪声的标准差为 0.1
+        gau = tf.keras.layers.GaussianNoise(0.1)
+        # 以 50％ 的概率为图像添加高斯噪声
+        image = tf.cond(tf.random.uniform([]) < 0.5, lambda: gau(image), lambda: image)
+    image = tfa.image.random_cutout(image, [20, 20])
+    image = tfa.image.random_cutout(image, [20, 20])
+    image = tfa.image.random_cutout(image, [20, 20])
+    image = tfa.image.random_cutout(image, [20, 20])
     return image, label, id
 
 

@@ -9,7 +9,6 @@ import math
 import scipy
 from scipy import signal
 from scipy.signal import get_window
-from GroupNormalization import GroupNormalization
 import warnings
 from typing import Optional, Tuple
 
@@ -25,14 +24,14 @@ class CFG:
     sample_rate = 2048.0
     fmin = 20.0
     fmax = 512.0
-    hop_length = 16
-    bins_per_octave = 24
+    hop_length = 8
+    bins_per_octave = 12
     whiten = False
+    whiten_use_tukey = True
     bandpass = True
     ts = 0.1
     length = 4096
     tukey = tf.cast(scipy.signal.windows.get_window(('tukey', ts), length), tf.float32)
-    use_tukey = True
     # *******************************************************************************************
     # Test Parameters
     fold = [0]
@@ -207,7 +206,7 @@ def MinMaxScaler(data, lower, upper, mode):
 
 @tf.function
 def whiten(signal):
-    if CFG.use_tukey:
+    if CFG.whiten_use_tukey:
         window = CFG.tukey
     else:
         window = tf.signal.hann_window(signal.shape[-1], periodic=True)

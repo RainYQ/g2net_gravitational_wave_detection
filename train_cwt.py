@@ -10,8 +10,6 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 import efficientnet.tfkeras as efn
 from sklearn.model_selection import StratifiedKFold
-from tensorflow.keras import backend as K
-from GroupNormalization import GroupNormalization
 import tensorflow_addons as tfa
 import tensorflow_probability as tfp
 import scipy
@@ -30,14 +28,14 @@ class CFG:
     sample_rate = 2048.0
     fmin = 20.0
     fmax = 512.0
-    nv = 32
+    nv = 8
     whiten = False
+    whiten_use_tukey = True
     bandpass = True
     trainable = False
     ts = 0.1
     length = 4096
     tukey = tf.cast(scipy.signal.windows.get_window(('tukey', ts), length), tf.float32)
-    use_tukey = True
     # *******************************************************************************************
     # tfrecords folder location
     tfrecords_fold_prefix = "./TFRecords/BandPass" if bandpass else "./TFRecords/No BandPass"
@@ -46,17 +44,36 @@ class CFG:
     split_data_location = "./data_local"
     # *******************************************************************************************
     # Train Parameters
-    SEED = 1234
+    SEED = 2020
     HEIGHT = 256
     WIDTH = 256
     batch_size = 16
     epoch = 20
     iteration_per_epoch = 28000
     learning_rate = 1e-4
+    initial_cycle = 4
+    # 'RectifiedAdam' or 'Adam with CosineDecayRestarts' or 'SGD with CosineDecayRestarts' or 'Adam with SWA'
+    # or 'AdamW with CosineDecay' or 'Adam with AutoDecay'
+    optimizer = 'RectifiedAdam'
     k_fold = 5
+    use_pretrain = False
     # *******************************************************************************************
     # Augmentation
+    use_shuffle_channel = False
+    Use_Gaussian_Noise = True
     mixup = True
+    label_smooth = True
+    ls = 0.99
+    T_SHIFT = False
+    S_SHIFT = False
+    # *******************************************************************************************
+    # Normalization Style
+    signal_use_channel_std_mean = True
+    mean = tf.reshape(tf.cast([5.36416325e-27, 1.21596245e-25, 2.37073866e-27], tf.float64), (3, 1))
+    std = tf.reshape(tf.cast(np.sqrt(np.array([5.50707291e-41, 5.50458798e-41, 3.37861660e-42], dtype=np.float64)),
+                             tf.float64), (3, 1))
+    # 'channel' or 'global' or None
+    image_norm_type = None
     # *******************************************************************************************
     # Tensorboard
     tensorboard = False
@@ -129,27 +146,36 @@ def cwt(input):
 
 @tf.function
 def _cwt(image, label):
-    return MinMaxScaler(tf.image.resize(cwt(image), (CFG.HEIGHT, CFG.WIDTH)), 0.0, 1.0), label
+    return cwt(image), label
 
 
 @tf.function
 def _cwt_val_extra(image, id):
-    return MinMaxScaler(tf.image.resize(cwt(image), (CFG.HEIGHT, CFG.WIDTH)), 0.0, 1.0), id
+    return cwt(image), id
 
 
 @tf.function
-def MinMaxScaler(data, lower, upper):
+def MinMaxScaler(data, lower, upper, mode):
     lower = tf.cast(lower, tf.float32)
     upper = tf.cast(upper, tf.float32)
-    min_val = tf.reshape(tf.reduce_min(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
-    max_val = tf.reshape(tf.reduce_max(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
-    std_data = tf.divide(tf.subtract(data, min_val), tf.subtract(max_val, min_val))
+    if mode == 'channel':
+        min_val = tf.reshape(tf.reduce_min(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
+        max_val = tf.reshape(tf.reduce_max(data, axis=[1, 2]), [tf.shape(data)[0], 1, 1, tf.shape(data)[-1]])
+        std_data = tf.divide(tf.subtract(data, min_val), tf.subtract(max_val, min_val))
+    elif mode == 'global':
+        lower = tf.cast(lower, tf.float32)
+        upper = tf.cast(upper, tf.float32)
+        min_val = tf.reshape(tf.reduce_min(data, axis=0), [tf.shape(data)[0], 1, 1, 1])
+        max_val = tf.reshape(tf.reduce_max(data, axis=0), [tf.shape(data)[0], 1, 1, 1])
+        std_data = tf.divide(tf.subtract(data, min_val), tf.subtract(max_val, min_val))
+    else:
+        return data
     return tf.add(tf.multiply(std_data, tf.subtract(upper, lower)), lower)
 
 
 @tf.function
 def whiten(signal):
-    if CFG.use_tukey:
+    if CFG.whiten_use_tukey:
         window = CFG.tukey
     else:
         window = tf.signal.hann_window(signal.shape[-1], periodic=True)
@@ -188,21 +214,36 @@ def _parse_raw_function(sample):
 
 @tf.function
 def _decode_raw(sample):
-    data = tf.io.decode_raw(sample['data'], tf.float32)
+    data = tf.io.decode_raw(sample['data'], tf.float64)
     data = tf.reshape(data, (3, 4096))
-    # Shuffle Channel
-    indice = tf.range(len(data))
-    indice = tf.random.shuffle(indice)
-    data = tf.gather(data, indice, axis=0)
+    if CFG.signal_use_channel_std_mean:
+        data = (data - CFG.mean) / CFG.std
+    else:
+        data /= tf.reshape(tf.reduce_max(data, axis=1), (3, 1))
+    data = tf.cast(data, tf.float32)
+    if CFG.use_shuffle_channel:
+        # Shuffle Channel
+        indice = tf.range(len(data))
+        indice = tf.random.shuffle(indice)
+        data = tf.gather(data, indice, axis=0)
     if CFG.whiten:
         data = whiten(data)
-    return data, tf.cast(sample['label'], tf.float32)
+    if CFG.label_smooth:
+        label = tf.cast(sample['label'], tf.float32) * CFG.ls
+    else:
+        label = tf.cast(sample['label'], tf.float32)
+    return data, label
 
 
 @tf.function
 def _decode_raw_val(sample):
-    data = tf.io.decode_raw(sample['data'], tf.float32)
+    data = tf.io.decode_raw(sample['data'], tf.float64)
     data = tf.reshape(data, (3, 4096))
+    if CFG.signal_use_channel_std_mean:
+        data = (data - CFG.mean) / CFG.std
+    else:
+        data /= tf.reshape(tf.reduce_max(data, axis=1), (3, 1))
+    data = tf.cast(data, tf.float32)
     if CFG.whiten:
         data = whiten(data)
     return data, tf.cast(sample['label'], tf.float32)
@@ -210,8 +251,13 @@ def _decode_raw_val(sample):
 
 @tf.function
 def _decode_raw_val_extra(sample):
-    data = tf.io.decode_raw(sample['data'], tf.float32)
+    data = tf.io.decode_raw(sample['data'], tf.float64)
     data = tf.reshape(data, (3, 4096))
+    if CFG.signal_use_channel_std_mean:
+        data = (data - CFG.mean) / CFG.std
+    else:
+        data /= tf.reshape(tf.reduce_max(data, axis=1), (3, 1))
+    data = tf.cast(data, tf.float32)
     if CFG.whiten:
         data = whiten(data)
     return data, sample['id']
@@ -219,17 +265,18 @@ def _decode_raw_val_extra(sample):
 
 @tf.function
 def _aug(image, label):
+    image = tf.image.resize(image, (CFG.HEIGHT, CFG.WIDTH))
+    image = MinMaxScaler(image, 0.0, 1.0, CFG.image_norm_type)
     image = tf.image.per_image_standardization(image)
-    # 高斯噪声的标准差为 0.1
-    gau = tf.keras.layers.GaussianNoise(0.1)
-    # 以 50％ 的概率为图像添加高斯噪声
-    image = tf.cond(tf.random.uniform([]) < 0.5, lambda: gau(image), lambda: image)
-    # image = tf.image.random_contrast(image, lower=0.7, upper=1.3)
-    # image = tf.cond(tf.random.uniform([]) < 0.5,
-    #                 lambda: tf.image.random_saturation(image, lower=0.7, upper=1.3),
-    #                 lambda: tf.image.random_hue(image, max_delta=0.3))
-    # # brightness随机调整
-    # image = tf.image.random_brightness(image, 0.3)
+    if CFG.T_SHIFT:
+        image = tf.map_fn(time_shift, image, dtype=tf.float32)
+    if CFG.S_SHIFT:
+        image = tf.map_fn(spector_shift, image, dtype=tf.float32)
+    if CFG.Use_Gaussian_Noise:
+        # 高斯噪声的标准差为 0.1
+        gau = tf.keras.layers.GaussianNoise(0.1)
+        # 以 50％ 的概率为图像添加高斯噪声
+        image = tf.cond(tf.random.uniform([]) < 0.5, lambda: gau(image), lambda: image)
     image = tfa.image.random_cutout(image, [20, 20])
     image = tfa.image.random_cutout(image, [20, 20])
     image = tfa.image.random_cutout(image, [20, 20])
@@ -238,13 +285,33 @@ def _aug(image, label):
 
 
 @tf.function
+def time_shift(img):
+    T = CFG.WIDTH
+    P = tf.random.uniform([], 0, 1)
+    SHIFT = tf.cast(T * P, tf.int32)
+    return tf.concat([img[-SHIFT:], img[:-SHIFT]], axis=0)
+
+
+@tf.function
+def spector_shift(img):
+    T = CFG.HEIGHT
+    P = tf.random.uniform([], 0, 1)
+    SHIFT = tf.cast(T * P, tf.int32)
+    return tf.concat([img[:, -SHIFT:], img[:, :-SHIFT]], axis=1)
+
+
+@tf.function
 def _aug_val(image, label):
+    image = tf.image.resize(image, (CFG.HEIGHT, CFG.WIDTH))
+    image = MinMaxScaler(image, 0.0, 1.0, CFG.image_norm_type)
     image = tf.image.per_image_standardization(image)
     return image, label
 
 
 @tf.function
 def _aug_val_extra(image, id):
+    image = tf.image.resize(image, (CFG.HEIGHT, CFG.WIDTH))
+    image = MinMaxScaler(image, 0.0, 1.0, CFG.image_norm_type)
     image = tf.image.per_image_standardization(image)
     return image, id
 
@@ -275,12 +342,12 @@ def _mixup(data, targ):
     return x, y
 
 
-indices = []
-id = []
-label = []
 preprocess_dataset = (raw_image_dataset.map(_parse_raw_function, num_parallel_calls=AUTOTUNE)
                       .enumerate())
 if CFG.generate_split_data:
+    indices = []
+    id = []
+    label = []
     for i, sample in tqdm(preprocess_dataset):
         indices.append(i.numpy())
         label.append(sample['label'].numpy())
@@ -372,25 +439,16 @@ def create_model():
     backbone = efn.EfficientNetB0(
         include_top=False,
         input_shape=(CFG.HEIGHT, CFG.WIDTH, 3),
-        weights='noisy-student',
+        weights='noisy-student' if not CFG.use_pretrain else None,
         pooling='avg'
     )
 
     model = tf.keras.Sequential([
         backbone,
-        GroupNormalization(group=32),
-        tf.keras.layers.Dropout(0.5),
-        tf.keras.layers.Dense(128, kernel_initializer=tf.keras.initializers.he_normal(), activation='relu'),
-        GroupNormalization(group=32),
         tf.keras.layers.Dropout(0.5),
         tf.keras.layers.Dense(1, kernel_initializer=tf.keras.initializers.he_normal(), activation='sigmoid')])
-    # optimizer = tf.keras.optimizers.Adam(CFG.learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=1e-6)
-    optimizer = tfa.optimizers.RectifiedAdam(learning_rate=CFG.learning_rate,
-                                             total_steps=CFG.epoch * CFG.iteration_per_epoch,
-                                             warmup_proportion=0.1, min_lr=1e-6)
-    model.compile(optimizer=optimizer,
-                  loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
-                  metrics=['accuracy', tf.keras.metrics.AUC(name='auc', num_thresholds=498)])
+    if CFG.use_pretrain:
+        model.load_weights("./model/pre-train_model/model_best_0.h5")
     return model
 
 
@@ -414,14 +472,12 @@ def plot_history(history, name):
     plt.savefig(name)
 
 
-model = create_model()
-
-
 # Run Inference On Val Dataset.
 # Save as "./submission_with_prob_val_i.csv"
 def inference(count, path):
     idx_val_tf = tf.cast(tf.constant(splits[count][1]), tf.int64)
     v_test_dataset = create_val_extra_dataset(CFG.batch_size * 2, idx_val_tf)
+    model = create_model()
     model.load_weights(path + "/model_best_%d.h5" % count)
     rec_ids = []
     probs = []
@@ -443,32 +499,55 @@ def inference(count, path):
 def train(splits, split_id):
     print("batchsize", CFG.batch_size)
     model = create_model()
+    if CFG.optimizer == 'RectifiedAdam':
+        optimizer = tfa.optimizers.RectifiedAdam(learning_rate=CFG.learning_rate,
+                                                 total_steps=CFG.epoch * CFG.iteration_per_epoch,
+                                                 warmup_proportion=0.1, min_lr=1e-6)
+    elif CFG.optimizer == 'Adam with CosineDecayRestarts':
+        lr_decayed_fn = (tf.keras.optimizers.schedules.CosineDecayRestarts(
+            CFG.learning_rate,
+            CFG.iteration_per_epoch * CFG.initial_cycle, 1.5))
+        optimizer = tf.keras.optimizers.Adam(lr_decayed_fn, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=1e-6)
+    elif CFG.optimizer == 'SGD with CosineDecayRestarts':
+        lr_decayed_fn = (tf.keras.optimizers.schedules.CosineDecayRestarts(
+            CFG.learning_rate,
+            CFG.iteration_per_epoch * CFG.initial_cycle, 1.5))
+        optimizer = tf.keras.optimizers.SGD(lr_decayed_fn, momentum=0.9, decay=1e-4)
+    elif CFG.optimizer == 'Adam with SWA':
+        optimizer = tf.keras.optimizers.Adam(CFG.learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=1e-6)
+        optimizer = tfa.optimizers.SWA(optimizer)
+    elif CFG.optimizer == 'AdamW with CosineDecay':
+        lr_decayed_fn = tf.keras.optimizers.schedules.CosineDecay(CFG.learning_rate, CFG.iteration_per_epoch)
+        optimizer = tfa.optimizers.AdamW(lr_decayed_fn, learning_rate=1e-4)
+    elif CFG.optimizer == 'Adam with AutoDecay':
+        optimizer = tf.keras.optimizers.Adam(CFG.learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=1e-4)
+        autodecay_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3, min_lr=1e-6)
+    else:
+        print('No such optimizer.')
+        return None
+    model.compile(optimizer=optimizer,
+                  loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
+                  metrics=['accuracy', tf.keras.metrics.AUC(name='auc', num_thresholds=498)])
     idx_train_tf = tf.cast(tf.constant(splits[split_id][0]), tf.int64)
     idx_val_tf = tf.cast(tf.constant(splits[split_id][1]), tf.int64)
     # 生成训练集和验证集
     dataset = create_train_dataset(CFG.batch_size, idx_train_tf)
     vdataset = create_val_dataset(CFG.batch_size, idx_val_tf)
+    callbacks = [
+        tf.keras.callbacks.ModelCheckpoint(
+            filepath='./model/model_best_%d.h5' % split_id,
+            save_weights_only=True,
+            monitor='val_loss',
+            mode='min',
+            save_best_only=True)
+    ]
     if CFG.tensorboard:
         log_dir = "logs/profile/" + datetime.now().strftime("%Y%m%d-%H%M%S")
         tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch=2)
-        callbacks = [
-            tf.keras.callbacks.ModelCheckpoint(
-                filepath='./model/model_best_%d.h5' % split_id,
-                save_weights_only=True,
-                monitor='val_loss',
-                mode='min',
-                save_best_only=True),
-            tensorboard_callback
-        ]
-    else:
-        callbacks = [
-            tf.keras.callbacks.ModelCheckpoint(
-                filepath='./model/model_best_%d.h5' % split_id,
-                save_weights_only=True,
-                monitor='val_auc',
-                mode='max',
-                save_best_only=True)
-        ]
+        callbacks.append(tensorboard_callback)
+    if CFG.optimizer == 'Adam with AutoDecay':
+        callbacks.append(autodecay_lr)
+    print(callbacks)
     history = model.fit(dataset,
                         batch_size=CFG.batch_size,
                         steps_per_epoch=CFG.iteration_per_epoch,

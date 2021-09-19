@@ -5,14 +5,24 @@ import os
 
 
 class CFG:
-    Merge_Top_Solution = True
+    Merge_Top_Solution = False
     result_folder = "./"
+    weights = [0.5, 0.5]
+    use_weights = False
+    acc = [0.8726, 0.8711]
+    acc_weights = acc / np.sum(acc)
+    use_acc_weights = False
 
 
 def ensemble(data):
     temp = np.zeros_like(data[0].sort_values(by='id')["target"].values)
     for j in range(len(data)):
-        temp += 1 / len(data) * data[j].sort_values(by='id')["target"].values
+        if CFG.use_weights:
+            temp += CFG.weights[j] * data[j].sort_values(by='id')["target"].values
+        elif CFG.use_acc_weights:
+            temp += CFG.acc_weights[j] * data[j].sort_values(by='id')["target"].values
+        else:
+            temp += 1 / len(data) * data[j].sort_values(by='id')["target"].values
     ensemble_result = pd.DataFrame({
         'id': data[0].sort_values(by='id')["id"].values,
         'target': temp
@@ -28,6 +38,7 @@ else:
 print(len(files), "csv files merged.")
 results = []
 for file in files:
+    print(file)
     results.append(pd.read_csv(file))
 save_path = os.path.join(CFG.result_folder, "submission_ensemble.csv")
 ensemble(results).to_csv(save_path, index=False)
