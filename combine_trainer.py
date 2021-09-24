@@ -54,9 +54,9 @@ class CFG:
     SEED = 2020
     HEIGHT = 128
     WIDTH = 128
-    batch_size = 1
+    batch_size = 8
     epoch = 20
-    iteration_per_epoch = 448000
+    iteration_per_epoch = 56000
     learning_rate = 1e-4
     initial_cycle = 4
     # 'RectifiedAdam' or 'Adam with CosineDecayRestarts' or 'SGD with CosineDecayRestarts' or 'Adam with SWA'
@@ -373,7 +373,7 @@ def _decode_raw_val_extra(sample):
 
 
 @tf.function
-def aug(image):
+def aug_cwt(image):
     image = tf.image.resize(image, (CFG.HEIGHT, CFG.WIDTH))
     image = MinMaxScaler(image, 0.0, 1.0, CFG.image_norm_type)
     image = tf.image.per_image_standardization(image)
@@ -389,9 +389,21 @@ def aug(image):
     return image
 
 
+@tf.function
+def aug_cqt(image):
+    image = tf.image.resize(image, (CFG.HEIGHT, CFG.WIDTH))
+    image = MinMaxScaler(image, 0.0, 1.0, CFG.image_norm_type)
+    image = tf.image.per_image_standardization(image)
+    image = tfa.image.random_cutout(image, [20, 20])
+    image = tfa.image.random_cutout(image, [20, 20])
+    image = tfa.image.random_cutout(image, [20, 20])
+    image = tfa.image.random_cutout(image, [20, 20])
+    return image
+
+
 def _aug(image_dict, label):
-    image_dict['cqt'] = aug(image_dict['cqt'])
-    image_dict['cwt'] = aug(image_dict['cwt'])
+    image_dict['cqt'] = aug_cqt(image_dict['cqt'])
+    image_dict['cwt'] = aug_cwt(image_dict['cwt'])
     return image_dict, label
 
 
@@ -570,6 +582,8 @@ def create_model():
     model = tf.keras.Model(inputs=[cqt_input, cwt_input], outputs=out)
     if CFG.use_pretrain:
         model.load_weights("./model/pre-train_model/model_best_0.h5")
+        model.layers[2].trainable = False
+        model.layers[3].trainable = False
     return model
 
 
