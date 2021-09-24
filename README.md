@@ -2,11 +2,11 @@
 # Results
 | | CQT Fold 0 | CQT Fold 1 | CQT Fold 2 | CQT Fold 3 | CQT Fold 4 | CWT Fold 0 | CWT Fold 1 | CWT Fold 2 | CWT Fold 3 | CWT Fold 4 | CV / LB |
 | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
-| CV | 0.8711 (New) | 0.8730 (New) | 0.8710 (New) | 0.8713 | 0.8709 (New) | 0.8722 (New) | 0.8727 (New) | 0.8716 | 0.8716 | 0.8716 |
-| LB | 0.8732 (New) | 0.8734 (New) | 0.8733 (New) | 0.8730 | 0.8726 (New) | 0.8741 (New) | 0.8741 (New) | 0.8736 | 0.8735 | 0.8734 |
+| CV | 0.8711 (New) | 0.8730 (New) | 0.8710 (New) | 0.8713 | 0.8709 (New) | 0.8722 (New) | 0.8727 (New) | 0.8720 (New) | 0.8716 | 0.8716 |
+| LB | 0.8732 (New) | 0.8734 (New) | 0.8733 (New) | 0.8730 | 0.8726 (New) | 0.8741 (New) | 0.8741 (New) | 0.8740 (New) | 0.8735 | 0.8734 |
 | CQT Ensemble | √ | √ | √ | √ | √ | | | | | | 0.87146 / - |
-| CWT Ensemble | | | | | | √ | √ | √ | √ | √ | 0.87194 / - |
-| Ensemble | √ | √ | √ | √ | √ | √ | √ | √ | √ | √ | 0.8717 / - |
+| CWT Ensemble | | | | | | √ | √ | √ | √ | √ | 0.87202 / - |
+| Ensemble | √ | √ | √ | √ | √ | √ | √ | √ | √ | √ | 0.87174 / 0.8764 |
 
 ## Prepare Step
 1. Use [GitHub Desktop | Simple collaboration from your desktop](https://desktop.github.com/)
