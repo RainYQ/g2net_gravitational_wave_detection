@@ -6,7 +6,8 @@ import os
 
 class CFG:
     Merge_Top_Solution = False
-    result_folder = "./"
+    result_folder = "./model/results"
+    file_name = "submission_cwt_fold_0_1_2_3_4_cqt_fold_0_1_2_3_4"
     weights = [0.5, 0.5]
     use_weights = False
     acc = [0.8726, 0.8711]
@@ -40,6 +41,6 @@ results = []
 for file in files:
     print(file)
     results.append(pd.read_csv(file))
-save_path = os.path.join(CFG.result_folder, "submission_ensemble.csv")
+save_path = os.path.join(CFG.result_folder, CFG.file_name + ".csv")
 ensemble(results).to_csv(save_path, index=False)
 print("csv write to:", save_path)
