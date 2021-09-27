@@ -32,7 +32,7 @@ class CFG:
     mode = 'test'
     # *******************************************************************************************
     # Resize Parameters
-    HEIGHT = 256
+    HEIGHT = 768
     WIDTH = 256
 
 
@@ -237,6 +237,7 @@ d = tf.stack(data, axis=0)
 plt.figure()
 start = time.time()
 image = create_cqt_image_batch(d)
+image = tf.image.resize(image, (CFG.HEIGHT, CFG.WIDTH))
 end = time.time()
 print('Time cost:', end - start)
 image = image.numpy()[0, :, :, 0].T
