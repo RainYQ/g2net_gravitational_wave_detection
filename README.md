@@ -3,7 +3,7 @@
 ## Part I CQT & CWT
 | | CQT Fold 0 | CQT Fold 1 | CQT Fold 2 | CQT Fold 3 | CQT Fold 4 | CWT Fold 0 | CWT Fold 1 | CWT Fold 2 | CWT Fold 3 | CWT Fold 4 | CV / LB |
 | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
-| CV | 0.8738 (New) | 0.8745 (New) | 0.8734 (New) | 0.8741 (New) | Wait (New) | Wait (New) | Wait (New) | Wait (New) | Wait (New) | Wait (New) |
+| CV | 0.8738 (New) | 0.8745 (New) | 0.8734 (New) | 0.8741 (New) | 0.8732 (New) | Wait (New) | Wait (New) | Wait (New) | Wait (New) | Wait (New) |
 | LB | 0.8752 (New) | 0.8755 (New) | - (New) | - (New) | - (New) | Wait (New) | Wait (New) | Wait (New) | Wait (New) | Wait (New) |
 | CQT Ensemble | √ | √ | √ | √ | √ | | | | | | 0.8738 / 0.8768 |
 | CWT Ensemble | | | | | | √ | √ | √ | √ | √ | - / - |
