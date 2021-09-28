@@ -23,7 +23,7 @@ class CFG:
     sample_rate = 2048.0
     fmin = 20.0
     fmax = 512.0
-    nv = 32
+    nv = 8
     whiten = False
     bandpass = True
     bandpass_with_tukey = True
@@ -34,13 +34,13 @@ class CFG:
     use_tukey = True
     # *******************************************************************************************
     # Sample Parameters
-    wave_data_prefix = "F:/"
+    wave_data_prefix = "./"
     sample_id_group = ['01d162f247', '333a674c18']
     mode = 'train'
     # *******************************************************************************************
     # Resize Parameters
     HEIGHT = 256
-    WIDTH = 256
+    WIDTH = 1024
     # *******************************************************************************************
     # Show Parameters
     show_error_plot = False
@@ -144,7 +144,7 @@ def cwt_pre(shape, nv=16, sr=2048.0, flow=20.0, fhigh=512.0, trainable=False):
     return wft, padvalue, num_scales
 
 
-wft, padvalue, num_scales = cwt_pre((1, CFG.len),
+wft, padvalue, num_scales = cwt_pre((3, CFG.length),
                                     nv=CFG.nv,
                                     sr=CFG.sample_rate,
                                     flow=CFG.fmin,
@@ -293,7 +293,7 @@ for sample_id in CFG.sample_id_group:
 d = tf.stack(data, axis=0)
 plt.figure()
 start = time.time()
-y = cwt(d, flow=CFG.fmin, fhigh=CFG.fmax, batch_size=3)
+y = cwt(d, flow=CFG.fmin, fhigh=CFG.fmax, batch_size=2)
 end = time.time()
 print('Time cost:', end - start)
 y = tf.image.resize(y, (CFG.HEIGHT, CFG.WIDTH))

@@ -7,7 +7,7 @@ import os
 class CFG:
     Merge_Top_Solution = False
     result_folder = "./model/results"
-    file_name = "submission_cwt_fold_0_1_2_3_4_cqt_fold_0_1_2_3_4"
+    file_name = "submission_merge_cqt_cwt_0.8785"
     weights = [0.5, 0.5]
     use_weights = False
     acc = [0.8726, 0.8711]
