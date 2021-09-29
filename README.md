@@ -3,13 +3,13 @@
 ## Part I CQT & CWT
 | | CQT Fold 0 | CQT Fold 1 | CQT Fold 2 | CQT Fold 3 | CQT Fold 4 | CWT Fold 0 | CWT Fold 1 | CWT Fold 2 | CWT Fold 3 | CWT Fold 4 | CV / LB |
 | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
-| CV | 0.8738 (New) | 0.8745 (New) | 0.8734 (New) | 0.8741 (New) | 0.8732 (New) | Wait (New) | Wait (New) | Wait (New) | Wait (New) | Wait (New) |
-| LB | 0.8752 (New) | 0.8755 (New) | - (New) | - (New) | - (New) | Wait (New) | Wait (New) | Wait (New) | Wait (New) | Wait (New) |
-| CQT Ensemble | √ | √ | √ | √ | √ | | | | | | 0.8738 / 0.8768 |
-| CWT Ensemble | | | | | | √ | √ | √ | √ | √ | - / - |
-| Ensemble | √ | √ | √ | √ | √ | √ | √ | √ | √ | √ | - / - |
+| CV | 0.8741 (New) | 0.8750 (New) | 0.8732 (New) | 0.8740 (New) | 0.8734 (New) | 0.8734 (New) | 0.8743 (New) | 0.8733 (New) | 0.8727 (New) | 0.8730 (New) |
+| LB | - (New) | - (New) | - (New) | - (New) | - (New) | - (New) | - (New) | - (New) | - (New) | - (New) |
+| CQT Ensemble | √ | √ | √ | √ | √ | | | | | | 0.87394 / - |
+| CWT Ensemble | | | | | | √ | √ | √ | √ | √ | 0.87334 / 0.8762 |
+| Ensemble | √ | √ | √ | √ | √ | √ | √ | √ | √ | √ | 0.87364 / - |
 
-## Part II Combine CQT & CWT
+## Part II Combine CQT & CWT (Old)
 | | Combine Fold 0 | Combine Fold 1 | Combine Fold 2 | Combine Fold 3 | Combine Fold 4 | CV / LB |
 | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
 | CV | 0.8739 | 0.8746 | 0.8735 | 0.8739 | 0.8735 |
