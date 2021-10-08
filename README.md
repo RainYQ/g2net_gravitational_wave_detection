@@ -1,19 +1,85 @@
 # g2net_gravitational_wave_detection
 # Results
+## Best Hyper-Parameters
+* bandpass filter
+  * fmin = 20.0 Hz
+  * fmax = 512.0 Hz
+* whiten = False
+* bandpass = True
+* hop_length = 6
+* bins_per_octave = 12
+* filter_scale = 0.5
+* image size = 256x1024
+* label_smooth = True, 0.99
+```python
+class CFG:
+    # *******************************************************************************************
+    # CQT Parameters
+    sample_rate = 2048.0
+    fmin = 20.0
+    fmax = 512.0
+    hop_length = 6
+    bins_per_octave = 12
+    filter_scale = 0.5
+    whiten = False
+    whiten_use_tukey = True
+    bandpass = True
+    ts = 0.1
+    length = 4096
+    tukey = tf.cast(scipy.signal.windows.get_window(('tukey', ts), length), tf.float32)
+    # *******************************************************************************************
+    # Train Parameters
+    SEED = 2020
+    HEIGHT = 1024
+    WIDTH = 256
+    batch_size = 128
+    epoch = 80
+    iteration_per_epoch = 875
+    learning_rate = 1e-3
+    initial_cycle = 8
+    # 'RectifiedAdam' or 'Adam with CosineDecayRestarts' or 'SGD with CosineDecayRestarts' or 'Adam with SWA'
+    # or 'AdamW with CosineDecay' or 'Adam with AutoDecay'
+    optimizer = 'Adam with AutoDecay'
+    k_fold = 5
+    use_pretrain = False
+    # *******************************************************************************************
+    # Augmentation
+    use_shuffle_channel = False
+    Use_Gaussian_Noise = False
+    mixup = False
+    label_smooth = True
+    ls = 0.99
+    T_SHIFT = False
+    S_SHIFT = False
+    # *******************************************************************************************
+    # Normalization Style
+    signal_use_channel_std_mean = True
+    mean = tf.reshape(tf.cast([5.36416325e-27, 1.21596245e-25, 2.37073866e-27], tf.float64), (3, 1))
+    std = tf.reshape(tf.cast(np.sqrt(np.array([5.50707291e-41, 5.50458798e-41, 3.37861660e-42], dtype=np.float64)),
+                             tf.float64), (3, 1))
+    # 'channel' or 'global' or None
+    image_norm_type = None
+    # *******************************************************************************************
+    # Tensorboard
+    tensorboard = False
+    # *******************************************************************************************
+    # Set to True for first Run
+    generate_split_data = False
+```
 ## Part I CQT & CWT
 | | CQT Fold 0 | CQT Fold 1 | CQT Fold 2 | CQT Fold 3 | CQT Fold 4 | CWT Fold 0 | CWT Fold 1 | CWT Fold 2 | CWT Fold 3 | CWT Fold 4 | CV / LB |
 | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
-| CV | 0.8741 (New) | 0.8750 (New) | 0.8732 (New) | 0.8740 (New) | 0.8734 (New) | 0.8734 (New) | 0.8743 (New) | 0.8733 (New) | 0.8727 (New) | 0.8730 (New) |
-| LB | - (New) | - (New) | - (New) | - (New) | - (New) | - (New) | - (New) | - (New) | - (New) | - (New) |
-| CQT Ensemble | √ | √ | √ | √ | √ | | | | | | 0.87394 / - |
-| CWT Ensemble | | | | | | √ | √ | √ | √ | √ | 0.87334 / 0.8762 |
-| Ensemble | √ | √ | √ | √ | √ | √ | √ | √ | √ | √ | 0.87364 / - |
+| CV | 0.8741 | 0.8750 | 0.8732 | 0.8740 | 0.8734 | 0.8734 | 0.8743 | 0.8733 | 0.8727 | 0.8730 |
+| LB | 0.87564 | 0.87535 | 0.87507 | 0.87474 | 0.87476 | 0.87459 | 0.87455 | 0.87500 | 0.87434 | 0.87526 |
+| CQT Ensemble | √ | √ | √ | √ | √ | | | | | | 0.87394 / 0.87640 |
+| CWT Ensemble | | | | | | √ | √ | √ | √ | √ | 0.87334 / 0.87620 |
+| Ensemble | √ | √ | √ | √ | √ | √ | √ | √ | √ | √ | 0.87364 / 0.87734 |
 
 ## Part II Combine CQT & CWT (Old)
 | | Combine Fold 0 | Combine Fold 1 | Combine Fold 2 | Combine Fold 3 | Combine Fold 4 | CV / LB |
 | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
 | CV | 0.8739 | 0.8746 | 0.8735 | 0.8739 | 0.8735 |
-| LB | 0.8755 | 0.8755 | - | - | - |
+| LB | 0.87556 | 0.87550 | 0.87555 | 0.87516 | 0.87565 |
 | Combine Ensemble | √ | √ | √ | √ | √ | 0.87388 / 0.8764 |
 
 ## Prepare Step
@@ -67,21 +133,25 @@
   * channel3
     * mean: -5.39777633e-26
     * var: 3.38153083e-42
-* Local Update to 09/13
+* Local Update to 09/30
 * kaggle notebook
-  * CWT Update to 09/19
+  * CWT Update to 09/30
     * https://www.kaggle.com/rainyq/train-g2net-cwt
     * https://www.kaggle.com/rainyq/inference-cwt
-  * CQT Update to 09/19
+  * CQT Update to 09/30
     * https://www.kaggle.com/rainyq/train-g2net-cqt
     * https://www.kaggle.com/rainyq/inference-cqt
+  * Combine Trainer Update to 09/26
+    * https://www.kaggle.com/rainyq/inference-combine-trainer
   * pre-processing CQT Update to 08/19
     * https://www.kaggle.com/rainyq/train-g2net
 * Google Colab Notebook
-  * CWT Update to 09/19
+  * CWT Update to 09/30
     * https://colab.research.google.com/drive/1iQ3ezj2dsZ79MVKq9Y_P4Ha9aod3uERZ?usp=sharing
-  * CQT Update to 09/19
+  * CQT Update to 09/30
     * https://colab.research.google.com/drive/1-2IDAhoTasx7GnHndazHb-IlQq2_v-u5?usp=sharing
+  * Combine Trainer Update to 09/26
+    * https://colab.research.google.com/drive/19QlO-C7o9O7DBu9Pm-HJj3jsfN-VrJWu?usp=sharing
 ## STEP2: Make TFRecords
 * train <br/>
   ```python
@@ -108,20 +178,18 @@
   * Cutout
   * Mixup
   * Shuffle Channel
-* **TPU Can only calculate CWT at batch_size <= 64**
 
 ## STEP4: Train
-* On RTX2060, EfficientNet B0, batch_size: 16, time: ~9500 s/epoch
-* On TPU, EfficientNet B7, batch_size: 256, time: ~850s / first epoch, ~360s / other epochs
+* On TPU, EfficientNet B5, batch_size: 128, time: ~1100s / first epoch, ~850s / other epochs
 * 5-Fold
 * Train Dataset
   * 448000 images
-  * steps per epoch: 448000 / 256 // 4 = 437
+  * steps per epoch: 448000 / 128 // 4 = 875
   * repeat √
   * shuffle √
 * Val Dataset
   * 112000 images
-  * steps per epoch: 112000 / 256 = 438
+  * steps per epoch: 112000 / 128 = 875
   * repeat ×
   * shuffle ×
   * cache √
@@ -143,11 +211,10 @@
                                warmup_proportion=0.1, min_lr=1e-5)
   ```
 ## STEP5: Predict
-* LB ~= CV + 0.0015
 * On RTX2060, batch_size: 64
 * On RTX2060, ~35 min/fold
-* On TPU, batch_size: 1024
-* On TPU, CQT 10 min/fold CWT 12.5 min/fold
+* On TPU, batch_size: 1024 for CQT, 512 for CWT, 256 for Combine Trainer
+* On TPU, CQT 10 min/fold, CWT 12.5 min/fold, Combine Trainer 23 min/fold
 
 ## STEP6: TODO
 ~~Sample~~ means finished <br/>
@@ -157,10 +224,10 @@
 * ~~**Add label smooth**~~
 * ~~**Add Cutout**~~
 * Add Cutmix
-* Compare different normalization styles
-* **Use Combine Feature Extractor, train a better classifier**
-  * Combine CQT CWT
-  * Combine different parameters of CQT or CWT
+* ~~Compare different normalization styles~~
+* ~~**Use Combine Feature Extractor, train a better classifier**~~
+  * ~~Combine CQT CWT~~
+  * ~~Combine different parameters of CQT or CWT~~
 * More Augmentations
 * **~~Signal Augmentations~~**
   * ~~**Swap Channel**~~
@@ -170,7 +237,7 @@
   * ~~Gaussian Noise~~ std: 0.1
 * ~~Use ROC_STAR_Loss https://github.com/iridiumblue/roc-star~~ 没啥好效果
 * ~~**Add TTA** we can use large TTA_STEP~~ 提升非常小
-* **Test ResNet RegNet(PyTorch)**
+* ~~**Test ResNet RegNet(PyTorch)**~~
 * ~~**Use Constant-Q Transform or Continuous Wavelet Transform**~~
 * **Wave Denoise**
 * Test ROF filter
