@@ -2,7 +2,7 @@ efficientnet==1.1.1
 joblib==1.0.1
 librosa==0.8.1
 matplotlib==3.4.3
-numpy==1.19.5
+numpy==1.21.0
 opencv-contrib-python==4.5.3.56
 opencv-python==4.5.3.56
 pandas==1.3.3
